@@ -319,7 +319,7 @@ public class ClusterStateManager {
                 for (String replica : partitionReplicas) {
                     //TODO (mhubail) currently this assigns the partition to the first found active replica.
                     //It needs to be modified to consider load balancing.
-                    if(addActiveReplica(replica, partition, partitionRecoveryPlan)) {
+                    if (addActiveReplica(replica, partition, partitionRecoveryPlan)) {
                         break;
                     }
                 }
