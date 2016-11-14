@@ -1,6 +1,9 @@
 127.0.0.1	localhost localhost.localdomain localhost4 localhost4.localdomain4
 ::1		localhost localhost.localdomain localhost6 localhost6.localdomain6
-10.10.0.2	cc
-10.10.0.3	nc1
-10.10.0.4	nc2
-10.10.0.5	nc3
+192.168.0.51    nc4
+192.168.0.50    nc3
+192.168.0.27    nc2
+192.168.0.28    nc1
+192.168.0.29    cc
+192.168.0.54    nc5
+192.168.0.55    nc6

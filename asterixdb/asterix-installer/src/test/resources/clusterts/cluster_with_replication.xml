@@ -39,25 +39,41 @@
   <data_replication>
     <enabled>true</enabled>
     <replication_port>2000</replication_port>
-    <replication_factor>2</replication_factor>
+    <replication_factor>3</replication_factor>
     <auto_failover>true</auto_failover>
     <replication_time_out>10</replication_time_out>
   </data_replication>
 
   <master_node>
     <id>cc</id>
-    <client_ip>10.10.0.2</client_ip>
-    <cluster_ip>10.10.0.2</cluster_ip>
+    <client_ip>192.168.0.29</client_ip>
+    <cluster_ip>192.168.0.29</cluster_ip>
     <client_port>1098</client_port>
     <cluster_port>1099</cluster_port>
     <http_port>8888</http_port>
   </master_node>
   <node>
     <id>nc1</id>
-    <cluster_ip>10.10.0.3</cluster_ip>
+    <cluster_ip>192.168.0.28</cluster_ip>
   </node>
   <node>
     <id>nc2</id>
-    <cluster_ip>10.10.0.4</cluster_ip>
+    <cluster_ip>192.168.0.27</cluster_ip>
   </node>
+  <node>
+    <id>nc3</id>
+    <cluster_ip>192.168.0.50</cluster_ip>
+  </node>
+  <node>
+    <id>nc4</id>
+    <cluster_ip>192.168.0.51</cluster_ip>
+  </node>
+  <node>
+	      <id>nc5</id>
+	          <cluster_ip>192.168.0.54</cluster_ip>
+	  </node>
+	  <node>
+		      <id>nc6</id>
+		          <cluster_ip>192.168.0.55</cluster_ip>
+			    </node>
 </cluster>

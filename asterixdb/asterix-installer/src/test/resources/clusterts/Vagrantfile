@@ -44,32 +44,24 @@ Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
     END
     config.vm.provision "shell", inline: $java_inst
 
-    config.vm.define "nc2" do |nc|
+    config.vm.define "nc5" do |nc|
         nc.vm.box = "bento/centos-6.7"
-        nc.vm.hostname = "nc2"
-        nc.vm.network "private_network", ip: "10.10.0.4"
-        config.vm.provider "virtualbox" do |v|
+        nc.vm.hostname = "nc5"
+	nc.vm.network "private_network", ip: "10.0.2.5"
+        nc.vm.network "public_network", ip: "192.168.0.54", use_dhcp_assigned_default_route: true
+	config.vm.provider "virtualbox" do |v|
             v.memory = 3096
             v.cpus = 2
         end
     end
-    config.vm.define "nc1" do |nc|
+    config.vm.define "nc6" do |nc|
         nc.vm.box = "bento/centos-6.7"
-        nc.vm.hostname = "nc1"
-        nc.vm.network "private_network", ip: "10.10.0.3"
+        nc.vm.hostname = "nc6"
+	nc.vm.network "private_network", ip: "10.0.2.6"
+	nc.vm.network "public_network", ip: "192.168.0.55", use_dhcp_assigned_default_route: true
         config.vm.provider "virtualbox" do |v|
             v.memory = 3096
             v.cpus = 2
-        end
-    end
-
-    config.vm.define "cc" do |cc|
-        cc.vm.box = "bento/centos-6.7"
-        cc.vm.hostname = "cc"
-        cc.vm.network "private_network", ip: "10.10.0.2"
-        config.vm.provider "virtualbox" do |v|
-            v.memory = 1024
-            v.cpus = 1
         end
     end
 

@@ -115,6 +115,7 @@ public class ClusterStateManager {
         if (LOGGER.isLoggable(Level.INFO)) {
             LOGGER.info("Removing configuration parameters for node id " + nodeId);
         }
+        LOGGER.info("REMOVING::: " + nodeId);
         activeNcConfiguration.remove(nodeId);
 
         //if this node was waiting for failback and failed before it completed
@@ -311,6 +312,7 @@ public class ClusterStateManager {
 
         //collect the partitions of the failed NC
         List<ClusterPartition> lostPartitions = getNodeAssignedPartitions(failedNodeId);
+        LOGGER.info("LOST PARTITIONS::: " + lostPartitions);
         if (!lostPartitions.isEmpty()) {
             for (ClusterPartition partition : lostPartitions) {
                 //find replicas for this partitions
@@ -354,6 +356,7 @@ public class ClusterStateManager {
                 }
             }
         }
+        LOGGER.info("Post recovery information::: " + getNodeAssignedPartitions(failedNodeId));
     }
 
     private void addActiveReplica(String replica, ClusterPartition partition,

@@ -120,4 +120,7 @@ public class LogManagerWithReplication extends LogManager {
         this.replicationManager = replicationManager;
     }
 
+    public void replicate() {
+
+    }
 }
