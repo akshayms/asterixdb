@@ -321,9 +321,9 @@ public class ClusterStateManager {
                 for (String replica : partitionReplicas) {
                     //TODO (mhubail) currently this assigns the partition to the first found active replica.
                     //It needs to be modified to consider load balancing.
-                    addActiveReplica(replica, partition, partitionRecoveryPlan);
-                    // bug? will always break on first loop execution
-                    break;
+                    if (addActiveReplica(replica, partition, partitionRecoveryPlan)) {
+                        break;
+                    }
                 }
             }
 
@@ -359,7 +359,7 @@ public class ClusterStateManager {
         LOGGER.info("Post recovery information::: " + getNodeAssignedPartitions(failedNodeId));
     }
 
-    private void addActiveReplica(String replica, ClusterPartition partition,
+    private boolean addActiveReplica(String replica, ClusterPartition partition,
             Map<String, List<Integer>> partitionRecoveryPlan) {
         if (activeNcConfiguration.containsKey(replica) && !failedNodes.contains(replica)) {
             if (!partitionRecoveryPlan.containsKey(replica)) {
@@ -369,7 +369,9 @@ public class ClusterStateManager {
             } else {
                 partitionRecoveryPlan.get(replica).add(partition.getPartitionId());
             }
+            return true;
         }
+        return false;
     }
 
     private synchronized List<ClusterPartition> getNodeAssignedPartitions(String nodeId) {

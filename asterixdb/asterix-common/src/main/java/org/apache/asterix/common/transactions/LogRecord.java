@@ -212,7 +212,8 @@ public class LogRecord implements ILogRecord {
             SimpleTupleWriter.INSTANCE.writeTuple(tuple, buffer.array(), buffer.position());
         } else {
             //since the tuple is already serialized in remote logs, just copy it from beginning to end.
-            System.arraycopy(tuple.getFieldData(0), 0, buffer.array(), buffer.position(), size);
+            System.arraycopy(tuple.getFieldData(0), ((SimpleTupleReference) tuple).getTupleStartOff(), buffer.array(),
+                    buffer.position(), size);
         }
         buffer.position(buffer.position() + size);
     }
