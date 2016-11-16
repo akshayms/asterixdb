@@ -29,24 +29,7 @@ import java.util.logging.Logger;
 import javax.servlet.Servlet;
 
 import org.apache.asterix.active.ActiveLifecycleListener;
-import org.apache.asterix.api.http.servlet.APIServlet;
-import org.apache.asterix.api.http.servlet.AQLAPIServlet;
-import org.apache.asterix.api.http.servlet.ClusterAPIServlet;
-import org.apache.asterix.api.http.servlet.ClusterCCDetailsAPIServlet;
-import org.apache.asterix.api.http.servlet.ClusterNodeDetailsAPIServlet;
-import org.apache.asterix.api.http.servlet.ConnectorAPIServlet;
-import org.apache.asterix.api.http.servlet.DDLAPIServlet;
-import org.apache.asterix.api.http.servlet.DiagnosticsAPIServlet;
-import org.apache.asterix.api.http.servlet.FeedServlet;
-import org.apache.asterix.api.http.servlet.QueryAPIServlet;
-import org.apache.asterix.api.http.servlet.QueryResultAPIServlet;
-import org.apache.asterix.api.http.servlet.QueryServiceServlet;
-import org.apache.asterix.api.http.servlet.QueryStatusAPIServlet;
-import org.apache.asterix.api.http.servlet.QueryWebInterfaceServlet;
-import org.apache.asterix.api.http.servlet.ServletConstants;
-import org.apache.asterix.api.http.servlet.ShutdownAPIServlet;
-import org.apache.asterix.api.http.servlet.UpdateAPIServlet;
-import org.apache.asterix.api.http.servlet.VersionAPIServlet;
+import org.apache.asterix.api.http.servlet.*;
 import org.apache.asterix.app.cc.AsterixResourceIdManager;
 import org.apache.asterix.app.cc.CompilerExtensionManager;
 import org.apache.asterix.app.external.ExternalLibraryUtils;
@@ -226,6 +209,7 @@ public class CCApplicationEntryPoint implements ICCApplicationEntryPoint {
         addServlet(context, Servlets.CLUSTER_STATE_NODE_DETAIL); // this must not precede add of CLUSTER_STATE
         addServlet(context, Servlets.CLUSTER_STATE_CC_DETAIL); // this must not precede add of CLUSTER_STATE
         addServlet(context, Servlets.DIAGNOSTICS);
+        addServlet(context, Servlets.REPLICATION_STATUS);
 
         return jsonAPIServer;
     }
@@ -305,6 +289,8 @@ public class CCApplicationEntryPoint implements ICCApplicationEntryPoint {
                 return new ClusterCCDetailsAPIServlet();
             case DIAGNOSTICS:
                 return new DiagnosticsAPIServlet();
+            case REPLICATION_STATUS:
+                return new ReplicationStatusServlet();
             default:
                 throw new IllegalStateException(String.valueOf(key));
         }

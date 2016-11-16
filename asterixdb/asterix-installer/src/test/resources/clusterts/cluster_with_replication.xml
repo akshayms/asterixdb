@@ -69,11 +69,11 @@
     <cluster_ip>192.168.0.51</cluster_ip>
   </node>
   <node>
-	      <id>nc5</id>
-	          <cluster_ip>192.168.0.54</cluster_ip>
-	  </node>
-	  <node>
-		      <id>nc6</id>
-		          <cluster_ip>192.168.0.55</cluster_ip>
-			    </node>
+    <id>nc5</id>
+    <cluster_ip>192.168.0.54</cluster_ip>
+  </node>
+  <node>
+    <id>nc6</id>
+    <cluster_ip>192.168.0.55</cluster_ip>
+  </node>
 </cluster>

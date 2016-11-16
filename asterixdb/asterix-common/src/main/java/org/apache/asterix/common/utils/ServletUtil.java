@@ -38,7 +38,8 @@ public class ServletUtil {
         CLUSTER_STATE("/admin/cluster/*"),
         CLUSTER_STATE_NODE_DETAIL("/admin/cluster/node/*"),
         CLUSTER_STATE_CC_DETAIL("/admin/cluster/cc/*"),
-        DIAGNOSTICS("/admin/diagnostics");
+        DIAGNOSTICS("/admin/diagnostics"),
+        REPLICATION_STATUS("/replication/status");
 
         private final String path;
 
