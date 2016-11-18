@@ -199,7 +199,7 @@ public class RecoveryManager implements IRecoveryManager, ILifeCycleComponent {
             throws IOException, ACIDException {
         try {
             Set<Integer> winnerJobSet = startRecoverysAnalysisPhase(partitions, logReader, lowWaterMarkLSN);
-            startRecoveryRedoPhase(partitions, logReader, lowWaterMarkLSN, winnerJobSet);
+            //startRecoveryRedoPhase(partitions, logReader, lowWaterMarkLSN, winnerJobSet);
         } finally {
             logReader.close();
             deleteRecoveryTemporaryFiles();
@@ -292,9 +292,9 @@ public class RecoveryManager implements IRecoveryManager, ILifeCycleComponent {
 
     private synchronized void startRecoveryRedoPhase(Set<Integer> partitions, ILogReader logReader,
             long lowWaterMarkLSN, Set<Integer> winnerJobSet) throws IOException, ACIDException {
+        LOGGER.info(":::IN RECOVERY:::");
         int redoCount = 0;
         int jobId = -1;
-
         long resourceId;
         long maxDiskLastLsn;
         long LSN = -1;
@@ -874,7 +874,7 @@ public class RecoveryManager implements IRecoveryManager, ILifeCycleComponent {
         }
     }
 
-    private static void redo(ILogRecord logRecord, IDatasetLifecycleManager datasetLifecycleManager) {
+    public static void redo(ILogRecord logRecord, IDatasetLifecycleManager datasetLifecycleManager) {
         try {
             ILSMIndex index =
                     (ILSMIndex) datasetLifecycleManager.getIndex(logRecord.getDatasetId(), logRecord.getResourceId());

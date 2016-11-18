@@ -492,6 +492,7 @@ public class ReplicationManager implements IReplicationManager {
      */
     private void establishTxnLogReplicationHandshake() {
         Map<String, SocketChannel> activeRemoteReplicasSockets = getActiveRemoteReplicasSockets();
+        LOGGER.info("REPL: establishing transaction log replication handhsake");
         logsRepSockets = new SocketChannel[activeRemoteReplicasSockets.size()];
         int i = 0;
         //start a listener thread per connection

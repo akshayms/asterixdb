@@ -21,7 +21,7 @@
   <store>storage</store>
 
   <data_replication>
-    <enabled>false</enabled>
+    <enabled>true</enabled>
     <replication_port>2016</replication_port>
     <replication_factor>2</replication_factor>
     <auto_failover>false</auto_failover>

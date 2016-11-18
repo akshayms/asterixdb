@@ -105,4 +105,6 @@ public interface ILogManager {
      * @throws IOException
      */
     public void closeLogFile(TxnLogFile logFileRef, FileChannel fileChannel) throws IOException;
+
+    public ITransactionSubsystem getTransactionSubsystem();
 }

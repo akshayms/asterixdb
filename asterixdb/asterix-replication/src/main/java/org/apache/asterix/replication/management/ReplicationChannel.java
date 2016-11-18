@@ -43,6 +43,7 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 
 import org.apache.asterix.common.api.IDatasetLifecycleManager;
+import org.apache.asterix.common.api.ILocalResourceMetadata;
 import org.apache.asterix.common.cluster.ClusterPartition;
 import org.apache.asterix.common.config.AsterixReplicationProperties;
 import org.apache.asterix.common.config.IAsterixPropertiesProvider;
@@ -54,11 +55,7 @@ import org.apache.asterix.common.replication.IReplicationChannel;
 import org.apache.asterix.common.replication.IReplicationManager;
 import org.apache.asterix.common.replication.IReplicationThread;
 import org.apache.asterix.common.replication.ReplicaEvent;
-import org.apache.asterix.common.transactions.IAsterixAppRuntimeContextProvider;
-import org.apache.asterix.common.transactions.ILogManager;
-import org.apache.asterix.common.transactions.LogRecord;
-import org.apache.asterix.common.transactions.LogSource;
-import org.apache.asterix.common.transactions.LogType;
+import org.apache.asterix.common.transactions.*;
 import org.apache.asterix.common.utils.TransactionUtil;
 import org.apache.asterix.replication.functions.ReplicaFilesRequest;
 import org.apache.asterix.replication.functions.ReplicaIndexFlushRequest;
@@ -70,12 +67,20 @@ import org.apache.asterix.replication.storage.LSMComponentProperties;
 import org.apache.asterix.replication.storage.LSMIndexFileProperties;
 import org.apache.asterix.replication.storage.ReplicaResourcesManager;
 import org.apache.asterix.transaction.management.resource.PersistentLocalResourceRepository;
+import org.apache.asterix.transaction.management.service.recovery.RecoveryManager;
+import org.apache.asterix.transaction.management.service.recovery.TxnId;
+import org.apache.asterix.transaction.management.service.transaction.TransactionSubsystem;
 import org.apache.hyracks.api.application.INCApplicationContext;
+import org.apache.hyracks.api.exceptions.HyracksDataException;
 import org.apache.hyracks.storage.am.common.api.IMetaDataPageManager;
+import org.apache.hyracks.storage.am.lsm.common.api.ILSMIndex;
 import org.apache.hyracks.storage.am.lsm.common.api.LSMOperationType;
 import org.apache.hyracks.storage.am.lsm.common.impls.AbstractLSMIndex;
+import org.apache.hyracks.storage.common.file.LocalResource;
 import org.apache.hyracks.util.StorageUtil;
 import org.apache.hyracks.util.StorageUtil.StorageUnit;
+
+import javax.jdo.annotations.Persistent;
 
 /**
  * This class is used to receive and process replication requests from remote replicas or replica events from CC
@@ -102,6 +107,8 @@ public class ReplicationChannel extends Thread implements IReplicationChannel {
     private final Set<Integer> nodeHostedPartitions;
     private final ReplicationNotifier replicationNotifier;
     private final Object flushLogslock = new Object();
+    private final ITransactionSubsystem txnSubSystem;
+    private final PersistentLocalResourceRepository localResourceRepository;
 
     public ReplicationChannel(String nodeId, AsterixReplicationProperties replicationProperties, ILogManager logManager,
             IReplicaResourcesManager replicaResoucesManager, IReplicationManager replicationManager,
@@ -131,6 +138,9 @@ public class ReplicationChannel extends Thread implements IReplicationChannel {
         }
         nodeHostedPartitions = new HashSet<>(clientsPartitions.size());
         nodeHostedPartitions.addAll(clientsPartitions);
+        txnSubSystem = logManager.getTransactionSubsystem();
+        localResourceRepository = (PersistentLocalResourceRepository) txnSubSystem
+                .getAsterixAppRuntimeContextProvider().getLocalResourceRepository();
     }
 
     @Override
@@ -441,6 +451,45 @@ public class ReplicationChannel extends Thread implements IReplicationChannel {
             }
         }
 
+        private void materialize(ByteBuffer buffer, LogRecord remoteLog) throws HyracksDataException {
+            LOGGER.info("Materializing: " + remoteLog.getLogRecordForDisplay());
+            IAsterixAppRuntimeContextProvider appRuntimeContext =
+                    txnSubSystem.getAsterixAppRuntimeContextProvider();
+            IDatasetLifecycleManager datasetLifecycleManager = appRuntimeContext.getDatasetLifecycleManager();
+            int jobId = remoteLog.getJobId();
+            ILSMIndex index = null;
+            ILocalResourceMetadata localResourceMetadata = null;
+            TxnId tempKeyTxnId = new TxnId(-1, -1, -1, null, -1, false);
+
+
+            tempKeyTxnId.setTxnId(jobId, remoteLog.getDatasetId(), remoteLog.getPKHashValue(), remoteLog
+                    .getPKValue(), remoteLog.getPKValueSize());
+            long resourceId = remoteLog.getResourceId();
+            Map<Long, LocalResource> resourceMap = localResourceRepository.loadAndGetAllResources();
+            LocalResource localResource = resourceMap.get(resourceId);
+
+
+            if (localResource == null) {
+                throw new HyracksDataException("Local resource not found!");
+            }
+            String partitionIODevicePath = localResourceRepository.getPartitionPath(localResource.getPartition());
+            String resourceAbsolutePath =
+                    partitionIODevicePath + File.separator + localResource.getResourceName();
+            localResource.setResourcePath(resourceAbsolutePath);
+
+
+            index = (ILSMIndex) datasetLifecycleManager.get(resourceAbsolutePath);
+            if (index == null) {
+                localResourceMetadata = (ILocalResourceMetadata) localResource.getResourceObject();
+                index = localResourceMetadata.createIndexInstance(appRuntimeContext,
+                        resourceAbsolutePath, localResource.getPartition(),
+                        localResourceRepository.getIODeviceNum(localResource.getPartition()));
+                datasetLifecycleManager.register(resourceAbsolutePath, index);
+                datasetLifecycleManager.open(resourceAbsolutePath);
+            }
+            RecoveryManager.redo(remoteLog, datasetLifecycleManager);
+        }
+
         private void processLogsBatch(ByteBuffer buffer) throws ACIDException {
             while (buffer.hasRemaining()) {
                 //get rid of log size
@@ -456,7 +505,16 @@ public class ReplicationChannel extends Thread implements IReplicationChannel {
                         //if the log partition belongs to a partitions hosted on this node, replicate it
                         if (nodeHostedPartitions.contains(remoteLog.getResourcePartition())) {
                             logManager.log(remoteLog);
+                            if (remoteLog.getLogType() == LogType.UPDATE) {
+                                try {
+                                    materialize(buffer, remoteLog);
+                                } catch (Exception e) {
+                                    LOGGER.info("COULD NOT MATERIALIZE! : " + remoteLog.getLogRecordForDisplay());
+                                }
+                            }
+
                         }
+
                         break;
                     case LogType.JOB_COMMIT:
                     case LogType.ABORT:
