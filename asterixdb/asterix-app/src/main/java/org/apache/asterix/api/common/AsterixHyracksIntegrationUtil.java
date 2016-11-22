@@ -235,7 +235,7 @@ public class AsterixHyracksIntegrationUtil {
     public static void main(String[] args) throws Exception {
         AsterixHyracksIntegrationUtil integrationUtil = new AsterixHyracksIntegrationUtil();
         try {
-            integrationUtil.run(Boolean.getBoolean("cleanup.start"), Boolean.getBoolean("cleanup.shutdown"));
+            integrationUtil.run(true, Boolean.getBoolean("cleanup.shutdown"));
         } catch (Exception e) {
             LOGGER.log(Level.WARNING, "Unexpected exception", e);
             System.exit(1);
