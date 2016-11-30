@@ -72,6 +72,8 @@ import org.apache.asterix.transaction.management.service.recovery.TxnId;
 import org.apache.asterix.transaction.management.service.transaction.TransactionSubsystem;
 import org.apache.hyracks.api.application.INCApplicationContext;
 import org.apache.hyracks.api.exceptions.HyracksDataException;
+import org.apache.hyracks.api.job.JobIdFactory;
+import org.apache.hyracks.api.job.JobSpecification;
 import org.apache.hyracks.storage.am.common.api.IMetaDataPageManager;
 import org.apache.hyracks.storage.am.lsm.common.api.ILSMIndex;
 import org.apache.hyracks.storage.am.lsm.common.api.LSMOperationType;
@@ -453,31 +455,36 @@ public class ReplicationChannel extends Thread implements IReplicationChannel {
 
         private void materialize(ByteBuffer buffer, LogRecord remoteLog) throws HyracksDataException {
             LOGGER.info("Materializing: " + remoteLog.getLogRecordForDisplay());
+
             IAsterixAppRuntimeContextProvider appRuntimeContext =
                     txnSubSystem.getAsterixAppRuntimeContextProvider();
             IDatasetLifecycleManager datasetLifecycleManager = appRuntimeContext.getDatasetLifecycleManager();
-            int jobId = remoteLog.getJobId();
+
+            //int jobId = remoteLog.getJobId();
             ILSMIndex index = null;
             ILocalResourceMetadata localResourceMetadata = null;
-            TxnId tempKeyTxnId = new TxnId(-1, -1, -1, null, -1, false);
+            //TxnId tempKeyTxnId = new TxnId(-1, -1, -1, null, -1, false);
 
-
-            tempKeyTxnId.setTxnId(jobId, remoteLog.getDatasetId(), remoteLog.getPKHashValue(), remoteLog
-                    .getPKValue(), remoteLog.getPKValueSize());
+            //tempKeyTxnId.setTxnId(jobId, remoteLog.getDatasetId(), remoteLog.getPKHashValue(), remoteLog
+              ///      .getPKValue(), remoteLog.getPKValueSize());
             long resourceId = remoteLog.getResourceId();
             Map<Long, LocalResource> resourceMap = localResourceRepository.loadAndGetAllResources();
             LocalResource localResource = resourceMap.get(resourceId);
 
 
+            JobId jobID = org.apache.asterix.transaction.management.service.transaction.JobIdFactory.generateJobId();
+
             if (localResource == null) {
                 throw new HyracksDataException("Local resource not found!");
             }
+
+            // TODO: Can this be created at a different time?
             String partitionIODevicePath = localResourceRepository.getPartitionPath(localResource.getPartition());
             String resourceAbsolutePath =
                     partitionIODevicePath + File.separator + localResource.getResourceName();
             localResource.setResourcePath(resourceAbsolutePath);
 
-
+            // TODO: Log this information
             index = (ILSMIndex) datasetLifecycleManager.get(resourceAbsolutePath);
             if (index == null) {
                 localResourceMetadata = (ILocalResourceMetadata) localResource.getResourceObject();
@@ -491,6 +498,8 @@ public class ReplicationChannel extends Thread implements IReplicationChannel {
         }
 
         private void processLogsBatch(ByteBuffer buffer) throws ACIDException {
+            int upCount, ecCount, upsertCount, commitCount, abortCount, flushCount, unknown;
+            upCount = ecCount = upsertCount = commitCount = abortCount = flushCount = unknown = 0;
             while (buffer.hasRemaining()) {
                 //get rid of log size
                 inBuffer.getInt();
@@ -500,12 +509,16 @@ public class ReplicationChannel extends Thread implements IReplicationChannel {
 
                 switch (remoteLog.getLogType()) {
                     case LogType.UPDATE:
+                        upCount++;
                     case LogType.ENTITY_COMMIT:
+                        ecCount++;
                     case LogType.UPSERT_ENTITY_COMMIT:
+                        upsertCount++;
                         //if the log partition belongs to a partitions hosted on this node, replicate it
+                        //LOGGER.info("LOG IS: " + remoteLog.getLogRecordForDisplay());
                         if (nodeHostedPartitions.contains(remoteLog.getResourcePartition())) {
                             logManager.log(remoteLog);
-                            if (remoteLog.getLogType() == LogType.UPDATE) {
+                            if (remoteLog.getLogType() == LogType.UPDATE || remoteLog.getLogType() == LogType.ENTITY_COMMIT) {
                                 try {
                                     materialize(buffer, remoteLog);
                                 } catch (Exception e) {
@@ -514,10 +527,11 @@ public class ReplicationChannel extends Thread implements IReplicationChannel {
                             }
 
                         }
-
                         break;
                     case LogType.JOB_COMMIT:
+                        commitCount++;
                     case LogType.ABORT:
+                        abortCount++;
                         LogRecord jobTerminationLog = new LogRecord();
                         TransactionUtil.formJobTerminateLogRecord(jobTerminationLog, remoteLog.getJobId(),
                                 remoteLog.getLogType() == LogType.JOB_COMMIT);
@@ -526,6 +540,7 @@ public class ReplicationChannel extends Thread implements IReplicationChannel {
                         logManager.log(jobTerminationLog);
                         break;
                     case LogType.FLUSH:
+                        flushCount++;
                         //store mapping information for flush logs to use them in incoming LSM components.
                         RemoteLogMapping flushLogMap = new RemoteLogMapping();
                         flushLogMap.setRemoteNodeID(remoteLog.getNodeId());
@@ -540,9 +555,16 @@ public class ReplicationChannel extends Thread implements IReplicationChannel {
                         }
                         break;
                     default:
+                        unknown++;
                         LOGGER.severe("Unsupported LogType: " + remoteLog.getLogType());
                 }
             }
+
+            LOGGER.info("Batch log processed counts: ");
+            //int upCount, ecCount, upsertCount, commitCount, abortCount, flushCount, unknown;
+            LOGGER.info("R_TYPE_COUNTS: UPDATE/ENTITY_COMMIT/UPSERT/COMMIT/ABORT/FLUSH/UNKOWN:" + upCount + " / " +
+                    ecCount + " / " +  upsertCount + " / " + commitCount + " / " + abortCount + " / " + flushCount +
+                    " / " + unknown);
         }
 
         /**
