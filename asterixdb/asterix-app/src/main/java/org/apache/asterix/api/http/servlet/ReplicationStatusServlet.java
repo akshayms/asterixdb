@@ -19,6 +19,7 @@
 package org.apache.asterix.api.http.servlet;
 
 import org.apache.asterix.common.cluster.ClusterPartition;
+import org.apache.asterix.replication.management.ReplicationChannel;
 import org.apache.asterix.runtime.util.AsterixAppContextInfo;
 
 import javax.servlet.http.HttpServlet;
@@ -27,20 +28,30 @@ import javax.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.util.Map;
+import java.util.logging.Logger;
 
 public class ReplicationStatusServlet extends HttpServlet {
     private static final long serialVersionUID = 1L;
 
+    private static final Logger LOGGER = Logger.getLogger(ReplicationStatusServlet.class.getName());
     @Override
     public void doGet(HttpServletRequest request, HttpServletResponse response) throws IOException {
         PrintWriter out = response.getWriter();
-        if (AsterixAppContextInfo.INSTANCE.initialized()
-                && AsterixAppContextInfo.INSTANCE.getCCApplicationContext() != null) {
-            Map<String, ClusterPartition[]> nodePartitions = AsterixAppContextInfo.INSTANCE.getMetadataProperties()
-                    .getNodePartitions();
-            nodePartitions.entrySet().stream().forEach(e -> out.write("Node: " + e.getKey() + " Partitions: " + e
-                    .getValue()));
-        }
+//        if (AsterixAppContextInfo.INSTANCE.initialized()
+//                && AsterixAppContextInfo.INSTANCE.getCCApplicationContext() != null) {
+//            Map<String, ClusterPartition[]> nodePartitions = AsterixAppContextInfo.INSTANCE.getMetadataProperties()
+//                    .getNodePartitions();
+//            nodePartitions.entrySet().stream().forEach(e -> out.write("Node: " + e.getKey() + " Partitions: " + e
+//                    .getValue()));
+//
+//        }
+        response.setContentType("application/json");
+        response.setCharacterEncoding("utf-8");
+        String opStatus = ReplicationChannel.printOpStatus();
 
+        LOGGER.info("REPLICATION OP-STATUS: " + opStatus);
+        out.write(opStatus);
+        response.setStatus(HttpServletResponse.SC_OK);
+        out.flush();
     }
 }

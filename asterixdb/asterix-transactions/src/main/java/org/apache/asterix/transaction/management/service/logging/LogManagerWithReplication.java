@@ -27,9 +27,13 @@ import org.apache.asterix.common.transactions.LogSource;
 import org.apache.asterix.common.transactions.LogType;
 import org.apache.asterix.transaction.management.service.transaction.TransactionSubsystem;
 
+import java.util.logging.Logger;
+
 public class LogManagerWithReplication extends LogManager {
 
     private IReplicationManager replicationManager;
+
+    private static final Logger LOGGER = Logger.getLogger(LogManagerWithReplication.class.getName());
 
     public LogManagerWithReplication(TransactionSubsystem txnSubsystem) {
         super(txnSubsystem);
@@ -40,7 +44,7 @@ public class LogManagerWithReplication extends LogManager {
         //only locally generated logs should be replicated
         logRecord.setReplicated(logRecord.getLogSource() == LogSource.LOCAL && logRecord.getLogType() != LogType.WAIT);
 
-        //Remote flush logs do not need to be flushed separately since they may not trigger local flush
+         //Remote flush logs do not need to be flushed separately since they may not trigger local flush
         if (logRecord.getLogType() == LogType.FLUSH && logRecord.getLogSource() == LogSource.LOCAL) {
             flushLogsQ.offer(logRecord);
             return;
@@ -108,10 +112,17 @@ public class LogManagerWithReplication extends LogManager {
         }
         appendPage.appendWithReplication(logRecord, appendLSN.get());
 
-        if (logRecord.getLogType() == LogType.FLUSH) {
+        if (logRecord.getLogType() == LogType.FLUSH) {//|| logRecord.getLogType() == LogType.UPDATE || logRecord
+                //.getLogType() == LogType.ENTITY_COMMIT) {
             logRecord.setLSN(appendLSN.get());
         }
 
+        if (logRecord.getLogSource() == LogSource.REMOTE && (logRecord.getLogType() == LogType.UPDATE || logRecord
+                .getLogType() == LogType.ENTITY_COMMIT)) {
+            long lsn = appendLSN.get();
+            LOGGER.info("REPL: setting append LSN to " + lsn);
+            logRecord.setLSN(lsn);
+        }
         appendLSN.addAndGet(logRecordSize);
     }
 

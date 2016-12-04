@@ -30,11 +30,7 @@ import java.nio.channels.SocketChannel;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.ArrayList;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -67,9 +63,11 @@ import org.apache.asterix.replication.storage.LSMComponentProperties;
 import org.apache.asterix.replication.storage.LSMIndexFileProperties;
 import org.apache.asterix.replication.storage.ReplicaResourcesManager;
 import org.apache.asterix.transaction.management.resource.PersistentLocalResourceRepository;
+import org.apache.asterix.transaction.management.service.logging.LogReader;
 import org.apache.asterix.transaction.management.service.recovery.RecoveryManager;
 import org.apache.asterix.transaction.management.service.recovery.TxnId;
 import org.apache.asterix.transaction.management.service.transaction.TransactionSubsystem;
+import org.apache.hive.com.esotericsoftware.kryo.serializers.DefaultSerializers;
 import org.apache.hyracks.api.application.INCApplicationContext;
 import org.apache.hyracks.api.exceptions.HyracksDataException;
 import org.apache.hyracks.api.job.JobIdFactory;
@@ -112,6 +110,11 @@ public class ReplicationChannel extends Thread implements IReplicationChannel {
     private final ITransactionSubsystem txnSubSystem;
     private final PersistentLocalResourceRepository localResourceRepository;
 
+    // TODO: Change to (RID, PKHashValue, lastOpLSN)
+    public static Map<Integer, Map<Integer, Integer>> inflightOps;
+    private static Set<Integer> completedJobs;
+
+
     public ReplicationChannel(String nodeId, AsterixReplicationProperties replicationProperties, ILogManager logManager,
             IReplicaResourcesManager replicaResoucesManager, IReplicationManager replicationManager,
             INCApplicationContext appContext, IAsterixAppRuntimeContextProvider asterixAppRuntimeContextProvider) {
@@ -143,6 +146,24 @@ public class ReplicationChannel extends Thread implements IReplicationChannel {
         txnSubSystem = logManager.getTransactionSubsystem();
         localResourceRepository = (PersistentLocalResourceRepository) txnSubSystem
                 .getAsterixAppRuntimeContextProvider().getLocalResourceRepository();
+
+        inflightOps = new HashMap<>();
+        completedJobs = new HashSet<>();
+
+    }
+
+    public static String printOpStatus() {
+        StringBuilder sb = new StringBuilder();
+        sb.append("======= NJOBS: " + inflightOps.size());
+        inflightOps.entrySet().stream()
+                .peek(kv -> sb.append("========\n").append("JobID: ").append(kv.getKey()).append("\n"))
+                .flatMap(kv -> kv.getValue().entrySet().stream())
+                .peek(entityKV -> sb.append("EntityPK: ").append(entityKV.getKey()).append(" OpCount: ").append
+                        (entityKV.getValue()))
+                .forEach(eKv -> sb.append("\n"));
+        sb.append("COMPLETED JOBS: ");
+        completedJobs.stream().forEach(jid -> sb.append(jid).append(" , "));
+        return sb.toString();
     }
 
     @Override
@@ -224,6 +245,7 @@ public class ReplicationChannel extends Thread implements IReplicationChannel {
             inBuffer = ByteBuffer.allocate(INTIAL_BUFFER_SIZE);
             outBuffer = ByteBuffer.allocate(INTIAL_BUFFER_SIZE);
             remoteLog = new LogRecord();
+            LOGGER.info("New replication thread started!");
         }
 
         @Override
@@ -453,6 +475,37 @@ public class ReplicationChannel extends Thread implements IReplicationChannel {
             }
         }
 
+        private synchronized void updateLocalOpTracker(int jobId, int PKHashValue, Byte logType) {
+            Map<Integer, Integer> entityMap;
+            if (!inflightOps.containsKey(jobId)) {
+                entityMap = new HashMap<>();
+                inflightOps.put(jobId, entityMap);
+            } else {
+                entityMap = inflightOps.get(jobId);
+            }
+            if (!entityMap.containsKey(PKHashValue) && logType != LogType.ENTITY_COMMIT) {
+                entityMap.put(PKHashValue, 0);
+            }
+            if (logType != LogType.ENTITY_COMMIT) {
+                entityMap.put(PKHashValue, entityMap.get(PKHashValue) + 1);
+            }
+            else {
+                LOGGER.info("REPL: Completed committing log " + PKHashValue);
+                entityMap.remove(PKHashValue);
+            }
+
+            if (logType == LogType.JOB_COMMIT) {
+                LOGGER.info("REPL: At time of job commit, the count of pending entities is " + entityMap.size());
+                if (entityMap.size() > 0) {
+                    LOGGER.info("REPL: WARNING!! JOB COMMIT HAPPENING BEFORE ENTITY COMMIT!!!");
+                }
+                LOGGER.info("COMPLETED JOB! " + jobId);
+                LOGGER.info(printOpStatus());
+                inflightOps.remove(jobId);
+                completedJobs.add(jobId);
+            }
+        }
+
         private void materialize(ByteBuffer buffer, LogRecord remoteLog) throws HyracksDataException {
             LOGGER.info("Materializing: " + remoteLog.getLogRecordForDisplay());
 
@@ -471,8 +524,15 @@ public class ReplicationChannel extends Thread implements IReplicationChannel {
             Map<Long, LocalResource> resourceMap = localResourceRepository.loadAndGetAllResources();
             LocalResource localResource = resourceMap.get(resourceId);
 
+//            try {
+//                ITransactionContext txnCtx = txnSubSystem.getTransactionManager().getTransactionContext(new JobId(remoteLog
+//                        .getJobId()), true);
+//            } catch (ACIDException e) {
+//                e.printStackTrace();
+//                LOGGER.severe("REPL: TXN CONTEXT NOT FOUND!!!");
+//            }
 
-            JobId jobID = org.apache.asterix.transaction.management.service.transaction.JobIdFactory.generateJobId();
+            //JobId jobID = org.apache.asterix.transaction.management.service.transaction.JobIdFactory.generateJobId();
 
             if (localResource == null) {
                 throw new HyracksDataException("Local resource not found!");
@@ -494,7 +554,26 @@ public class ReplicationChannel extends Thread implements IReplicationChannel {
                 datasetLifecycleManager.register(resourceAbsolutePath, index);
                 datasetLifecycleManager.open(resourceAbsolutePath);
             }
-            RecoveryManager.redo(remoteLog, datasetLifecycleManager);
+            if (remoteLog.getLogType() == LogType.UPDATE) {
+                RecoveryManager.redo(remoteLog, datasetLifecycleManager);
+            }
+            else {
+
+            }
+            //verify(remoteLog);
+        }
+
+        private void verify(LogRecord remoteLog) {
+            ILogReader reader = logManager.getLogReader(false);
+            try {
+                reader.initializeScan(remoteLog.getLSN());
+                ILogRecord record = reader.next();
+                LOGGER.info("=== RETRIEVED RECORD ==== ");
+                LOGGER.info(record.getLogRecordForDisplay());
+                reader.close();
+            } catch (ACIDException e) {
+                e.printStackTrace();
+            }
         }
 
         private void processLogsBatch(ByteBuffer buffer) throws ACIDException {
@@ -517,10 +596,14 @@ public class ReplicationChannel extends Thread implements IReplicationChannel {
                         //if the log partition belongs to a partitions hosted on this node, replicate it
                         //LOGGER.info("LOG IS: " + remoteLog.getLogRecordForDisplay());
                         if (nodeHostedPartitions.contains(remoteLog.getResourcePartition())) {
+                            LOGGER.info("Before LSN: " + remoteLog.getLSN());
                             logManager.log(remoteLog);
+                            LOGGER.info("After LSN: " + remoteLog.getLSN());
                             if (remoteLog.getLogType() == LogType.UPDATE || remoteLog.getLogType() == LogType.ENTITY_COMMIT) {
                                 try {
                                     materialize(buffer, remoteLog);
+                                    updateLocalOpTracker(remoteLog.getJobId(), remoteLog.getPKHashValue(), remoteLog
+                                            .getLogType());
                                 } catch (Exception e) {
                                     LOGGER.info("COULD NOT MATERIALIZE! : " + remoteLog.getLogRecordForDisplay());
                                 }
@@ -530,6 +613,8 @@ public class ReplicationChannel extends Thread implements IReplicationChannel {
                         break;
                     case LogType.JOB_COMMIT:
                         commitCount++;
+                        LOGGER.info("Received Job Commit for Job " + remoteLog.getJobId());
+                        updateLocalOpTracker(remoteLog.getJobId(), remoteLog.getPKHashValue(), remoteLog.getLogType());
                     case LogType.ABORT:
                         abortCount++;
                         LogRecord jobTerminationLog = new LogRecord();
@@ -538,6 +623,14 @@ public class ReplicationChannel extends Thread implements IReplicationChannel {
                         jobTerminationLog.setReplicationThread(this);
                         jobTerminationLog.setLogSource(LogSource.REMOTE);
                         logManager.log(jobTerminationLog);
+                        //ITransactionContext txnCtx = txnSubSystem.getTransactionManager().getTransactionContext(new
+                          //      JobId(remoteLog.getJobId()), false);
+                        // Hot-Standby - abort associated transaction on replica?
+                        // txnSubSystem.getTransactionManager()
+                        // .abortTransaction
+                        // (txnCtx, remoteLog
+                        // .getDatasetId(),
+                          //      remoteLog.getPKHashValue());
                         break;
                     case LogType.FLUSH:
                         flushCount++;

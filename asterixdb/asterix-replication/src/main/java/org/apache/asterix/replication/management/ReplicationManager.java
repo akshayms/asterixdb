@@ -336,6 +336,8 @@ public class ReplicationManager implements IReplicationManager {
                                         IMetaDataPageManager.INVALID_LSN_OFFSET, remainingFiles == 0);
                             }
 
+                            LOGGER.info("REP:: Replicating file properties:" + asterixFileProperties);
+
                             requestBuffer = ReplicationProtocol.writeFileReplicationRequest(requestBuffer,
                                     asterixFileProperties, ReplicationRequestType.REPLICATE_FILE);
 

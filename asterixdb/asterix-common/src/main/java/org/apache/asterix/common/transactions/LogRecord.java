@@ -344,6 +344,7 @@ public class LogRecord implements ILogRecord {
             default:
                 break;
         }
+        getLogRecordForDisplay();
         return RecordReadStatus.OK;
     }
 
