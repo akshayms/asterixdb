@@ -31,10 +31,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.*;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -79,6 +76,7 @@ import org.apache.hyracks.storage.am.lsm.common.impls.AbstractLSMIndex;
 import org.apache.hyracks.storage.common.file.LocalResource;
 import org.apache.hyracks.util.StorageUtil;
 import org.apache.hyracks.util.StorageUtil.StorageUnit;
+import org.codehaus.groovy.transform.sc.ListOfExpressionsExpression;
 
 import javax.jdo.annotations.Persistent;
 
@@ -111,8 +109,9 @@ public class ReplicationChannel extends Thread implements IReplicationChannel {
     private final PersistentLocalResourceRepository localResourceRepository;
 
     // TODO: Change to (RID, PKHashValue, lastOpLSN)
-    public static Map<Integer, Map<Integer, Integer>> inflightOps;
-    private static Set<Integer> completedJobs;
+    public Map<Long, Map<Integer, Long>> inflightOps;
+    private Set<Integer> completedJobs;
+    private OpTrackerProfiler profiler;
 
 
     public ReplicationChannel(String nodeId, AsterixReplicationProperties replicationProperties, ILogManager logManager,
@@ -149,20 +148,26 @@ public class ReplicationChannel extends Thread implements IReplicationChannel {
 
         inflightOps = new HashMap<>();
         completedJobs = new HashSet<>();
-
+        LOGGER.info("Starting Hot-Standby OpTracker Thread");
+        this.profiler = new OpTrackerProfiler(60000);
+        this.profiler.start();
     }
 
-    public static String printOpStatus() {
+    public synchronized String printOpStatus() {
         StringBuilder sb = new StringBuilder();
-        sb.append("======= NJOBS: " + inflightOps.size());
+        sb.append("== OP STATUS ==");
+        sb.append("\n");
         inflightOps.entrySet().stream()
-                .peek(kv -> sb.append("========\n").append("JobID: ").append(kv.getKey()).append("\n"))
+                .peek(kv -> sb.append(" RID: ").append(kv.getKey()).append("\n"))
                 .flatMap(kv -> kv.getValue().entrySet().stream())
-                .peek(entityKV -> sb.append("EntityPK: ").append(entityKV.getKey()).append(" OpCount: ").append
-                        (entityKV.getValue()))
-                .forEach(eKv -> sb.append("\n"));
-        sb.append("COMPLETED JOBS: ");
-        completedJobs.stream().forEach(jid -> sb.append(jid).append(" , "));
+                .forEach(kv -> sb.append("PK:").append(kv.getKey()).append(" Last LSN: ").append(kv.getValue())
+                        .append("\n"));
+
+        long total = inflightOps.values().stream()
+                .flatMap(m -> m.values().stream())
+                .count();
+        sb.append("====TOTAL: " + total + "=====");
+        // TODO: Add a counter of active ops that are being tracked.
         return sb.toString();
     }
 
@@ -475,8 +480,42 @@ public class ReplicationChannel extends Thread implements IReplicationChannel {
             }
         }
 
-        private synchronized void updateLocalOpTracker(int jobId, int PKHashValue, Byte logType) {
+        private synchronized void updateLocalOpTracker() {
+            long resourceId = remoteLog.getResourceId();
+            int PKHashValue = remoteLog.getPKHashValue();
+            long lastLSN = remoteLog.getLSN();
+
+            Map<Integer, Long> entityLocks = null;
+            if (!inflightOps.containsKey(resourceId)) {
+                entityLocks = new HashMap<>();
+                inflightOps.put(resourceId, entityLocks);
+            } else {
+                entityLocks = inflightOps.get(resourceId);
+            }
+            if (entityLocks.containsKey(PKHashValue)) {
+                if (remoteLog.getLogType() == LogType.ENTITY_COMMIT || remoteLog.getLogType() == LogType.JOB_COMMIT) {
+                    LOGGER.info("Current last LSN before entity commit for PK: " + PKHashValue + ", LSN: " + entityLocks
+                            .get(PKHashValue) + " logtype: " + remoteLog.getLogType());
+                    LOGGER.info("Received EC for RID: " + resourceId + " PK: " + PKHashValue + "with LSN: " +
+                            entityLocks.get(PKHashValue));
+                    long removedLSN = entityLocks.remove(PKHashValue);
+                    LOGGER.info("Removing PKHash, returned: " + removedLSN);
+                    LOGGER.info(printOpStatus());
+                } else {
+                    LOGGER.info("Changing RID: " +resourceId+ ", PK: " + PKHashValue + " from " + entityLocks.get
+                            (PKHashValue));
+                    entityLocks.put(PKHashValue, lastLSN);
+                }
+            }
+            else {
+                LOGGER.info("New operation on RID: " + resourceId + ", PK: " + PKHashValue + " at LSN: " + lastLSN);
+                entityLocks.put(PKHashValue, lastLSN);
+                // TODO: update the print statement to include resource ID changes.
+            }
+            // TODO: Remove entities from the tracker on job completion.
+/*
             Map<Integer, Integer> entityMap;
+
             if (!inflightOps.containsKey(jobId)) {
                 entityMap = new HashMap<>();
                 inflightOps.put(jobId, entityMap);
@@ -503,7 +542,7 @@ public class ReplicationChannel extends Thread implements IReplicationChannel {
                 LOGGER.info(printOpStatus());
                 inflightOps.remove(jobId);
                 completedJobs.add(jobId);
-            }
+            }*/
         }
 
         private void materialize(ByteBuffer buffer, LogRecord remoteLog) throws HyracksDataException {
@@ -513,13 +552,9 @@ public class ReplicationChannel extends Thread implements IReplicationChannel {
                     txnSubSystem.getAsterixAppRuntimeContextProvider();
             IDatasetLifecycleManager datasetLifecycleManager = appRuntimeContext.getDatasetLifecycleManager();
 
-            //int jobId = remoteLog.getJobId();
             ILSMIndex index = null;
             ILocalResourceMetadata localResourceMetadata = null;
-            //TxnId tempKeyTxnId = new TxnId(-1, -1, -1, null, -1, false);
 
-            //tempKeyTxnId.setTxnId(jobId, remoteLog.getDatasetId(), remoteLog.getPKHashValue(), remoteLog
-              ///      .getPKValue(), remoteLog.getPKValueSize());
             long resourceId = remoteLog.getResourceId();
             Map<Long, LocalResource> resourceMap = localResourceRepository.loadAndGetAllResources();
             LocalResource localResource = resourceMap.get(resourceId);
@@ -597,13 +632,14 @@ public class ReplicationChannel extends Thread implements IReplicationChannel {
                         //LOGGER.info("LOG IS: " + remoteLog.getLogRecordForDisplay());
                         if (nodeHostedPartitions.contains(remoteLog.getResourcePartition())) {
                             LOGGER.info("Before LSN: " + remoteLog.getLSN());
+                            // TODO: What happens on failure here?
                             logManager.log(remoteLog);
                             LOGGER.info("After LSN: " + remoteLog.getLSN());
+                            // TODO: What happens on failure here?
                             if (remoteLog.getLogType() == LogType.UPDATE || remoteLog.getLogType() == LogType.ENTITY_COMMIT) {
                                 try {
                                     materialize(buffer, remoteLog);
-                                    updateLocalOpTracker(remoteLog.getJobId(), remoteLog.getPKHashValue(), remoteLog
-                                            .getLogType());
+                                    updateLocalOpTracker();
                                 } catch (Exception e) {
                                     LOGGER.info("COULD NOT MATERIALIZE! : " + remoteLog.getLogRecordForDisplay());
                                 }
@@ -614,15 +650,21 @@ public class ReplicationChannel extends Thread implements IReplicationChannel {
                     case LogType.JOB_COMMIT:
                         commitCount++;
                         LOGGER.info("Received Job Commit for Job " + remoteLog.getJobId());
-                        updateLocalOpTracker(remoteLog.getJobId(), remoteLog.getPKHashValue(), remoteLog.getLogType());
+                        //updateLocalOpTracker(remoteLog.getJobId(), remoteLog.getPKHashValue(), remoteLog.getLogType
+                        // ());
+
                     case LogType.ABORT:
                         abortCount++;
                         LogRecord jobTerminationLog = new LogRecord();
                         TransactionUtil.formJobTerminateLogRecord(jobTerminationLog, remoteLog.getJobId(),
                                 remoteLog.getLogType() == LogType.JOB_COMMIT);
+                        updateLocalOpTracker();
                         jobTerminationLog.setReplicationThread(this);
                         jobTerminationLog.setLogSource(LogSource.REMOTE);
                         logManager.log(jobTerminationLog);
+
+
+
                         //ITransactionContext txnCtx = txnSubSystem.getTransactionManager().getTransactionContext(new
                           //      JobId(remoteLog.getJobId()), false);
                         // Hot-Standby - abort associated transaction on replica?
@@ -808,6 +850,26 @@ public class ReplicationChannel extends Thread implements IReplicationChannel {
                     lsnStartOffset += fileChannel.write(metadataBuffer, lsnStartOffset);
                 }
                 fileChannel.force(true);
+            }
+        }
+    }
+
+    private class OpTrackerProfiler extends Thread {
+        private long interval = 5000;
+        public OpTrackerProfiler(long interval) {
+            this.interval = interval;
+        }
+
+        @Override
+        public void run() {
+            while (true) {
+                try {
+                    Thread.sleep(interval);
+                    LOGGER.info(printOpStatus());
+                } catch (InterruptedException e) {
+                    LOGGER.severe("Unexepected error during profiling");
+                    e.printStackTrace();
+                }
             }
         }
     }

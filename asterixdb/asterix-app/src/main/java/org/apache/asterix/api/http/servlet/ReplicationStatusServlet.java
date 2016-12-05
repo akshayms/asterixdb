@@ -47,10 +47,11 @@ public class ReplicationStatusServlet extends HttpServlet {
 //        }
         response.setContentType("application/json");
         response.setCharacterEncoding("utf-8");
-        String opStatus = ReplicationChannel.printOpStatus();
+        //String opStatus = ReplicationChannel.printOpStatus();
 
-        LOGGER.info("REPLICATION OP-STATUS: " + opStatus);
-        out.write(opStatus);
+        //LOGGER.info("REPLICATION OP-STATUS: " + opStatus);
+        //out.write(opStatus);
+        out.write("Not Implemented");
         response.setStatus(HttpServletResponse.SC_OK);
         out.flush();
     }
