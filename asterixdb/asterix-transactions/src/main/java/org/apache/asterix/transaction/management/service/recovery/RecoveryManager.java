@@ -882,6 +882,7 @@ public class RecoveryManager implements IRecoveryManager, ILifeCycleComponent {
                     index.createAccessor(NoOpOperationCallback.INSTANCE, NoOpOperationCallback.INSTANCE);
             if (logRecord.getNewOp() == IndexOperation.INSERT.ordinal()) {
                 indexAccessor.forceInsert(logRecord.getNewValue());
+                //indexAccessor.insert(logRecord.getNewValue());
             } else if (logRecord.getNewOp() == IndexOperation.DELETE.ordinal()) {
                 indexAccessor.forceDelete(logRecord.getNewValue());
             } else {

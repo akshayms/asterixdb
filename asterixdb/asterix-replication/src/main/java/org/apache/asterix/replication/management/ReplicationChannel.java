@@ -63,12 +63,14 @@ import org.apache.asterix.transaction.management.resource.PersistentLocalResourc
 import org.apache.asterix.transaction.management.service.logging.LogReader;
 import org.apache.asterix.transaction.management.service.recovery.RecoveryManager;
 import org.apache.asterix.transaction.management.service.recovery.TxnId;
+import org.apache.asterix.transaction.management.service.transaction.TransactionManagementConstants;
 import org.apache.asterix.transaction.management.service.transaction.TransactionSubsystem;
 import org.apache.hive.com.esotericsoftware.kryo.serializers.DefaultSerializers;
 import org.apache.hyracks.api.application.INCApplicationContext;
 import org.apache.hyracks.api.exceptions.HyracksDataException;
 import org.apache.hyracks.api.job.JobIdFactory;
 import org.apache.hyracks.api.job.JobSpecification;
+import org.apache.hyracks.dataflow.common.data.accessors.ITupleReference;
 import org.apache.hyracks.storage.am.common.api.IMetaDataPageManager;
 import org.apache.hyracks.storage.am.lsm.common.api.ILSMIndex;
 import org.apache.hyracks.storage.am.lsm.common.api.LSMOperationType;
@@ -107,11 +109,13 @@ public class ReplicationChannel extends Thread implements IReplicationChannel {
     private final Object flushLogslock = new Object();
     private final ITransactionSubsystem txnSubSystem;
     private final PersistentLocalResourceRepository localResourceRepository;
+    private final ExecutorService materializationThreads;
 
     // TODO: Change to (RID, PKHashValue, lastOpLSN)
     public Map<Long, Map<Integer, Long>> inflightOps;
-    private Set<Integer> completedJobs;
     private OpTrackerProfiler profiler;
+    private Map<Integer, Integer> PKstatus; // Why?
+    private int opCounter = 0;
 
 
     public ReplicationChannel(String nodeId, AsterixReplicationProperties replicationProperties, ILogManager logManager,
@@ -147,15 +151,16 @@ public class ReplicationChannel extends Thread implements IReplicationChannel {
                 .getAsterixAppRuntimeContextProvider().getLocalResourceRepository();
 
         inflightOps = new HashMap<>();
-        completedJobs = new HashSet<>();
+        PKstatus = new HashMap<>();
         LOGGER.info("Starting Hot-Standby OpTracker Thread");
         this.profiler = new OpTrackerProfiler(60000);
         this.profiler.start();
+        materializationThreads = Executors.newCachedThreadPool(appContext.getThreadFactory());
     }
 
     public synchronized String printOpStatus() {
         StringBuilder sb = new StringBuilder();
-        sb.append("== OP STATUS ==");
+        sb.append("== OP STATUS == NC: " + replicationManager.getNodeId());
         sb.append("\n");
         inflightOps.entrySet().stream()
                 .peek(kv -> sb.append(" RID: ").append(kv.getKey()).append("\n"))
@@ -192,6 +197,7 @@ public class ReplicationChannel extends Thread implements IReplicationChannel {
                 socketChannel = serverSocketChannel.accept();
                 socketChannel.configureBlocking(true);
                 //start a new thread to handle the request
+                LOGGER.info("New replication thread requested, creating new replication thread");
                 replicationThreads.execute(new ReplicationThread(socketChannel));
             }
         } catch (IOException e) {
@@ -480,10 +486,22 @@ public class ReplicationChannel extends Thread implements IReplicationChannel {
             }
         }
 
+        private void updatePKStatus() {
+//            int PKHashValue = remoteLog.getPKHashValue();
+//            PKstatus.putIfAbsent(PKHashValue, 0);
+//            switch (remoteLog.getLogType()) {
+//                case LogType.ENTITY_COMMIT:
+//                case LogType.ABORT:c
+//                case LogType.JOB_COMMIT:
+//            }
+        }
+
         private synchronized void updateLocalOpTracker() {
-            long resourceId = remoteLog.getResourceId();
+            long resourceId = remoteLog.getDatasetId();
             int PKHashValue = remoteLog.getPKHashValue();
             long lastLSN = remoteLog.getLSN();
+
+            updatePKStatus();
 
             Map<Integer, Long> entityLocks = null;
             if (!inflightOps.containsKey(resourceId)) {
@@ -545,7 +563,7 @@ public class ReplicationChannel extends Thread implements IReplicationChannel {
             }*/
         }
 
-        private void materialize(ByteBuffer buffer, LogRecord remoteLog) throws HyracksDataException {
+        private void materialize(ByteBuffer buffer, LogRecord remoteLog) throws HyracksDataException, ACIDException {
             LOGGER.info("Materializing: " + remoteLog.getLogRecordForDisplay());
 
             IAsterixAppRuntimeContextProvider appRuntimeContext =
@@ -558,14 +576,17 @@ public class ReplicationChannel extends Thread implements IReplicationChannel {
             long resourceId = remoteLog.getResourceId();
             Map<Long, LocalResource> resourceMap = localResourceRepository.loadAndGetAllResources();
             LocalResource localResource = resourceMap.get(resourceId);
+            ITransactionContext txnCtx = null;
+            try {
+                txnCtx = txnSubSystem.getTransactionManager().getTransactionContext(new JobId(remoteLog
+                        .getJobId()), true);
+            } catch (ACIDException e) {
+                e.printStackTrace();
+                LOGGER.severe("REPL: TXN CONTEXT NOT FOUND!!!");
+            }
 
-//            try {
-//                ITransactionContext txnCtx = txnSubSystem.getTransactionManager().getTransactionContext(new JobId(remoteLog
-//                        .getJobId()), true);
-//            } catch (ACIDException e) {
-//                e.printStackTrace();
-//                LOGGER.severe("REPL: TXN CONTEXT NOT FOUND!!!");
-//            }
+            txnSubSystem.getLockManager().lock(new DatasetId(remoteLog.getDatasetId()), remoteLog.getPKHashValue(),
+                    TransactionManagementConstants.LockManagerConstants.LockMode.X, txnCtx);
 
             //JobId jobID = org.apache.asterix.transaction.management.service.transaction.JobIdFactory.generateJobId();
 
@@ -579,7 +600,7 @@ public class ReplicationChannel extends Thread implements IReplicationChannel {
                     partitionIODevicePath + File.separator + localResource.getResourceName();
             localResource.setResourcePath(resourceAbsolutePath);
 
-            // TODO: Log this information
+            // TODO: Log this information. Can this operation be done at a different time?
             index = (ILSMIndex) datasetLifecycleManager.get(resourceAbsolutePath);
             if (index == null) {
                 localResourceMetadata = (ILocalResourceMetadata) localResource.getResourceObject();
@@ -588,13 +609,21 @@ public class ReplicationChannel extends Thread implements IReplicationChannel {
                         localResourceRepository.getIODeviceNum(localResource.getPartition()));
                 datasetLifecycleManager.register(resourceAbsolutePath, index);
                 datasetLifecycleManager.open(resourceAbsolutePath);
+                // must be closed for each job ?
             }
             if (remoteLog.getLogType() == LogType.UPDATE) {
+                // Print new value bytes.
+                ITupleReference tuple = remoteLog.getNewValue();
+                int size = remoteLog.getPKValueSize();
                 RecoveryManager.redo(remoteLog, datasetLifecycleManager);
             }
             else {
 
             }
+            datasetLifecycleManager.close(resourceAbsolutePath);
+
+            txnSubSystem.getLockManager().unlock(new DatasetId(remoteLog.getDatasetId()), remoteLog.getPKHashValue(),
+                    TransactionManagementConstants.LockManagerConstants.LockMode.X, txnCtx);
             //verify(remoteLog);
         }
 
@@ -638,10 +667,20 @@ public class ReplicationChannel extends Thread implements IReplicationChannel {
                             // TODO: What happens on failure here?
                             if (remoteLog.getLogType() == LogType.UPDATE || remoteLog.getLogType() == LogType.ENTITY_COMMIT) {
                                 try {
+//                                    if (remoteLog.getPKHashValue() == 1399859334 &&
+//                                            remoteLog.getLogType() == LogType.UPDATE) {
+//                                        opCounter++;
+//                                        if (opCounter == 2) {
+//                                            LOGGER.info("REPL: Failing operation on ID 1");
+//                                            throw new ACIDException("Half transaction hook");
+//                                        }
+//                                    }
+                                    // TODO: Test this with worker thread dispatch.
                                     materialize(buffer, remoteLog);
                                     updateLocalOpTracker();
                                 } catch (Exception e) {
                                     LOGGER.info("COULD NOT MATERIALIZE! : " + remoteLog.getLogRecordForDisplay());
+                                    e.printStackTrace();
                                 }
                             }
 

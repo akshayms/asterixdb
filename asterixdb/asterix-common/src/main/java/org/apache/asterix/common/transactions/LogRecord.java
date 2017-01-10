@@ -193,6 +193,10 @@ public class LogRecord implements ILogRecord {
             buffer.putInt(nodeId.length());
             buffer.put(nodeId.getBytes());
         }
+        if (logType == LogType.ENTITY_COMMIT || logType == LogType.JOB_COMMIT) {
+            System.out.println("=========> PKHASH: " + PKHashValue + " === RID: " + resourceId + " TYPE: " + LogType
+                    .toString(logType));
+        }
     }
 
     private void writePKValue(ByteBuffer buffer) {
@@ -474,7 +478,19 @@ public class LogRecord implements ILogRecord {
         if (logType == LogType.UPDATE) {
             builder.append(" ResourceId : ").append(resourceId);
         }
+
+        //printPKValueBytes(builder);
         return builder.toString();
+    }
+
+    public void printPKValueBytes(StringBuilder builder) {
+        builder.append(" New Value bytes: [ ");
+        int offset = PKValue.getFieldStart(0);
+        for (int i = 0; i < PKValueSize; i++) {
+            builder.append(PKValue.getFieldData(0)[offset + i]);
+            builder.append(" , ");
+        }
+        builder.append(" ]");
     }
 
     ////////////////////////////////////////////

@@ -1315,4 +1315,9 @@ public class ReplicationManager implements IReplicationManager {
             }
         }
     }
+
+    @Override
+    public String getNodeId() {
+        return nodeId;
+    }
 }
