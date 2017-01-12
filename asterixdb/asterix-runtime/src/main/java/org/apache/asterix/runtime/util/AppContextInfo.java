@@ -28,17 +28,18 @@ import org.apache.asterix.common.config.CompilerProperties;
 import org.apache.asterix.common.config.ExtensionProperties;
 import org.apache.asterix.common.config.ExternalProperties;
 import org.apache.asterix.common.config.FeedProperties;
+import org.apache.asterix.common.config.IPropertiesProvider;
+import org.apache.asterix.common.config.MessagingProperties;
 import org.apache.asterix.common.config.MetadataProperties;
 import org.apache.asterix.common.config.PropertiesAccessor;
 import org.apache.asterix.common.config.ReplicationProperties;
 import org.apache.asterix.common.config.StorageProperties;
 import org.apache.asterix.common.config.TransactionProperties;
-import org.apache.asterix.common.config.IPropertiesProvider;
-import org.apache.asterix.common.config.MessagingProperties;
 import org.apache.asterix.common.dataflow.IApplicationContextInfo;
 import org.apache.asterix.common.exceptions.AsterixException;
 import org.apache.asterix.common.library.ILibraryManager;
 import org.apache.asterix.common.metadata.IMetadataBootstrap;
+import org.apache.asterix.common.replication.IFaultToleranceStrategy;
 import org.apache.asterix.common.transactions.IResourceIdManager;
 import org.apache.hyracks.api.application.ICCApplicationContext;
 import org.apache.hyracks.api.client.IHyracksClientConnection;
@@ -71,16 +72,15 @@ public class AppContextInfo implements IApplicationContextInfo, IPropertiesProvi
     private IHyracksClientConnection hcc;
     private Object extensionManager;
     private volatile boolean initialized = false;
+    private IFaultToleranceStrategy ftStrategy;
 
     private AppContextInfo() {
     }
 
     public static synchronized void initialize(ICCApplicationContext ccAppCtx, IHyracksClientConnection hcc,
-                                               IGlobalRecoveryMaanger globalRecoveryMaanger,
-                                               ILibraryManager libraryManager,
-                                               IResourceIdManager resourceIdManager,
-                                               Supplier<IMetadataBootstrap> metadataBootstrapSupplier)
-            throws AsterixException, IOException {
+            IGlobalRecoveryMaanger globalRecoveryMaanger, ILibraryManager libraryManager,
+            IResourceIdManager resourceIdManager, Supplier<IMetadataBootstrap> metadataBootstrapSupplier,
+            IFaultToleranceStrategy ftStrategy) throws AsterixException, IOException {
         if (INSTANCE.initialized) {
             throw new AsterixException(AppContextInfo.class.getSimpleName() + " has been initialized already");
         }
@@ -101,6 +101,7 @@ public class AppContextInfo implements IApplicationContextInfo, IPropertiesProvi
         INSTANCE.feedProperties = new FeedProperties(propertiesAccessor);
         INSTANCE.extensionProperties = new ExtensionProperties(propertiesAccessor);
         INSTANCE.replicationProperties = new ReplicationProperties(propertiesAccessor);
+        INSTANCE.ftStrategy = ftStrategy;
         INSTANCE.hcc = hcc;
         INSTANCE.buildProperties = new BuildProperties(propertiesAccessor);
         INSTANCE.messagingProperties = new MessagingProperties(propertiesAccessor);
@@ -206,5 +207,9 @@ public class AppContextInfo implements IApplicationContextInfo, IPropertiesProvi
 
     public IMetadataBootstrap getMetadataBootstrap() {
         return metadataBootstrapSupplier.get();
+    }
+
+    public IFaultToleranceStrategy getFaultToleranceStrategy() {
+        return ftStrategy;
     }
 }

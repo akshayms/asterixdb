@@ -47,14 +47,19 @@ import org.apache.asterix.api.http.servlet.ServletConstants;
 import org.apache.asterix.api.http.servlet.ShutdownAPIServlet;
 import org.apache.asterix.api.http.servlet.UpdateAPIServlet;
 import org.apache.asterix.api.http.servlet.VersionAPIServlet;
-import org.apache.asterix.app.cc.ResourceIdManager;
 import org.apache.asterix.app.cc.CompilerExtensionManager;
+import org.apache.asterix.app.cc.ResourceIdManager;
 import org.apache.asterix.app.external.ExternalLibraryUtils;
+import org.apache.asterix.app.replication.FaultToleranceStrategyFactory;
 import org.apache.asterix.common.api.AsterixThreadFactory;
 import org.apache.asterix.common.config.AsterixExtension;
+import org.apache.asterix.common.config.ClusterProperties;
 import org.apache.asterix.common.config.ExternalProperties;
 import org.apache.asterix.common.config.MetadataProperties;
 import org.apache.asterix.common.library.ILibraryManager;
+import org.apache.asterix.common.messaging.api.ICCMessageBroker;
+import org.apache.asterix.common.replication.IFaultToleranceStrategy;
+import org.apache.asterix.common.replication.IReplicationStrategy;
 import org.apache.asterix.common.utils.ServletUtil.Servlets;
 import org.apache.asterix.external.library.ExternalLibraryManager;
 import org.apache.asterix.messaging.CCMessageBroker;
@@ -68,7 +73,6 @@ import org.apache.hyracks.api.application.ICCApplicationEntryPoint;
 import org.apache.hyracks.api.client.HyracksConnection;
 import org.apache.hyracks.api.client.IHyracksClientConnection;
 import org.apache.hyracks.api.lifecycle.LifeCycleComponentManager;
-import org.apache.hyracks.api.messages.IMessageBroker;
 import org.apache.hyracks.control.cc.ClusterControllerService;
 import org.apache.hyracks.control.common.controllers.CCConfig;
 import org.eclipse.jetty.server.Server;
@@ -89,7 +93,7 @@ public class CCApplicationEntryPoint implements ICCApplicationEntryPoint {
     @Override
     public void start(ICCApplicationContext ccAppCtx, String[] args) throws Exception {
         final ClusterControllerService controllerService = (ClusterControllerService) ccAppCtx.getControllerService();
-        IMessageBroker messageBroker = new CCMessageBroker(controllerService);
+        ICCMessageBroker messageBroker = new CCMessageBroker(controllerService);
         this.appCtx = ccAppCtx;
 
         if (LOGGER.isLoggable(Level.INFO)) {
@@ -100,9 +104,12 @@ public class CCApplicationEntryPoint implements ICCApplicationEntryPoint {
         GlobalRecoveryManager.instantiate((HyracksConnection) getNewHyracksClientConnection());
         ILibraryManager libraryManager = new ExternalLibraryManager();
         ResourceIdManager resourceIdManager = new ResourceIdManager();
+        IReplicationStrategy repStrategy = ClusterProperties.INSTANCE.getReplicationStrategy();
+        IFaultToleranceStrategy ftStrategy = FaultToleranceStrategyFactory
+                .create(ClusterProperties.INSTANCE.getCluster(), repStrategy, messageBroker);
         ExternalLibraryUtils.setUpExternaLibraries(libraryManager, false);
         AppContextInfo.initialize(appCtx, getNewHyracksClientConnection(), GlobalRecoveryManager.instance(),
-                libraryManager, resourceIdManager, () -> MetadataManager.INSTANCE);
+                libraryManager, resourceIdManager, () -> MetadataManager.INSTANCE, ftStrategy);
         ccExtensionManager = new CompilerExtensionManager(getExtensions());
         AppContextInfo.INSTANCE.setExtensionManager(ccExtensionManager);
 
@@ -118,8 +125,7 @@ public class CCApplicationEntryPoint implements ICCApplicationEntryPoint {
 
         MetadataManager.initialize(proxy, metadataProperties);
 
-        AppContextInfo.INSTANCE.getCCApplicationContext()
-                .addJobLifecycleListener(ActiveLifecycleListener.INSTANCE);
+        AppContextInfo.INSTANCE.getCCApplicationContext().addJobLifecycleListener(ActiveLifecycleListener.INSTANCE);
 
         servers = configureServers();
 

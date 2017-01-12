@@ -31,20 +31,18 @@ import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.net.Inet4Address;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
-import java.util.Arrays;
-import java.util.ArrayList;
 import java.util.concurrent.TimeUnit;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.*;
 import org.apache.asterix.common.config.GlobalConfig;
 import org.apache.asterix.common.utils.ServletUtil.Servlets;
 import org.apache.asterix.test.base.ComparisonException;
@@ -69,6 +67,12 @@ import org.apache.http.impl.client.HttpClients;
 import org.apache.http.impl.client.StandardHttpRequestRetryHandler;
 import org.apache.http.util.EntityUtils;
 import org.apache.hyracks.util.StorageUtil;
+
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.DeserializationFeature;
+import com.fasterxml.jackson.databind.JsonMappingException;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 
 public class TestExecutor {
@@ -975,7 +979,7 @@ public class TestExecutor {
                 }
                 break;
             case "lib": // expected format <dataverse-name> <library-name>
-                        // <library-directory>
+                            // <library-directory>
                         // TODO: make this case work well with entity names containing spaces by
                         // looking for \"
                 lines = statement.split("\n");
@@ -1030,6 +1034,21 @@ public class TestExecutor {
             throw new IllegalArgumentException("Could not retrieve node pid from admin API");
         }
         ProcessBuilder pb = new ProcessBuilder("kill", "-9", Integer.toString(nodePid));
+        pb.start().waitFor();
+        // Delete NC's transaction logs to re-initialize it as a new NC.
+        deleteNCTxnLogs(nodeId, cUnit);
+    }
+
+    private void deleteNCTxnLogs(String nodeId, CompilationUnit cUnit) throws Exception {
+        OutputFormat fmt = OutputFormat.forCompilationUnit(cUnit);
+        String endpoint = "/admin/cluster";
+        InputStream executeJSONGet = executeJSONGet(fmt, "http://" + host + ":" + port + endpoint);
+        StringWriter actual = new StringWriter();
+        IOUtils.copy(executeJSONGet, actual, StandardCharsets.UTF_8);
+        String config = actual.toString();
+        ObjectMapper om = new ObjectMapper();
+        String logDir = om.readTree(config).findPath("transaction.log.dirs").get(nodeId).asText();
+        ProcessBuilder pb = new ProcessBuilder("rm", "-rf", logDir);
         pb.start().waitFor();
     }
 
