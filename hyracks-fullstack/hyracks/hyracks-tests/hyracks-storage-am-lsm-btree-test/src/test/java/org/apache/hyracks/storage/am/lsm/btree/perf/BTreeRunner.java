@@ -26,6 +26,9 @@ import org.apache.hyracks.api.exceptions.HyracksDataException;
 import org.apache.hyracks.storage.am.btree.exceptions.BTreeException;
 import org.apache.hyracks.storage.am.btree.frames.BTreeLeafFrameType;
 import org.apache.hyracks.storage.am.btree.util.BTreeUtils;
+import org.apache.hyracks.storage.am.common.api.ITreeIndexMetadataFrameFactory;
+import org.apache.hyracks.storage.am.common.frames.LIFOMetaDataFrameFactory;
+import org.apache.hyracks.storage.am.common.freepage.LinkedMetaDataPageManager;
 import org.apache.hyracks.storage.common.file.IFileMapProvider;
 import org.apache.hyracks.test.support.TestStorageManagerComponentHolder;
 import org.apache.hyracks.test.support.TestUtils;
@@ -35,7 +38,7 @@ public class BTreeRunner extends InMemoryBTreeRunner {
     protected static final int HYRACKS_FRAME_SIZE = 128;
 
     public BTreeRunner(int numTuples, int pageSize, int numPages, ITypeTraits[] typeTraits,
-            IBinaryComparatorFactory[] cmpFactories) throws HyracksDataException, BTreeException {
+            IBinaryComparatorFactory[] cmpFactories) throws BTreeException, HyracksDataException {
         super(numTuples, pageSize, numPages, typeTraits, cmpFactories);
     }
 
@@ -46,7 +49,9 @@ public class BTreeRunner extends InMemoryBTreeRunner {
         TestStorageManagerComponentHolder.init(pageSize, numPages, MAX_OPEN_FILES);
         bufferCache = TestStorageManagerComponentHolder.getBufferCache(ctx);
         IFileMapProvider fmp = TestStorageManagerComponentHolder.getFileMapProvider(ctx);
-        btree = BTreeUtils
-                .createBTree(bufferCache, fmp, typeTraits, cmpFactories, BTreeLeafFrameType.REGULAR_NSM, file);
+        ITreeIndexMetadataFrameFactory metaFrameFactory = new LIFOMetaDataFrameFactory();
+        LinkedMetaDataPageManager freePageManager = new LinkedMetaDataPageManager(bufferCache, metaFrameFactory);
+        btree = BTreeUtils.createBTree(bufferCache, fmp, typeTraits, cmpFactories, BTreeLeafFrameType.REGULAR_NSM,
+                file, freePageManager);
     }
 }

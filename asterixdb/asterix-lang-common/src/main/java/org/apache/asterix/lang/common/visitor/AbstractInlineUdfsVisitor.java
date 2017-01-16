@@ -50,11 +50,12 @@ import org.apache.asterix.lang.common.expression.VariableExpr;
 import org.apache.asterix.lang.common.rewrites.LangRewritingContext;
 import org.apache.asterix.lang.common.rewrites.VariableSubstitutionEnvironment;
 import org.apache.asterix.lang.common.statement.FunctionDecl;
+import org.apache.asterix.lang.common.statement.InsertStatement;
 import org.apache.asterix.lang.common.statement.Query;
 import org.apache.asterix.lang.common.struct.QuantifiedPair;
 import org.apache.asterix.lang.common.struct.VarIdentifier;
 import org.apache.asterix.lang.common.visitor.base.AbstractQueryExpressionVisitor;
-import org.apache.asterix.metadata.declared.AqlMetadataProvider;
+import org.apache.asterix.metadata.declared.MetadataProvider;
 import org.apache.hyracks.algebricks.common.utils.Pair;
 
 public abstract class AbstractInlineUdfsVisitor extends AbstractQueryExpressionVisitor<Boolean, List<FunctionDecl>> {
@@ -63,10 +64,10 @@ public abstract class AbstractInlineUdfsVisitor extends AbstractQueryExpressionV
     protected final CloneAndSubstituteVariablesVisitor cloneVisitor;
     private final IRewriterFactory rewriterFactory;
     private final List<FunctionDecl> declaredFunctions;
-    private final AqlMetadataProvider metadataProvider;
+    private final MetadataProvider metadataProvider;
 
     public AbstractInlineUdfsVisitor(LangRewritingContext context, IRewriterFactory rewriterFactory,
-            List<FunctionDecl> declaredFunctions, AqlMetadataProvider metadataProvider,
+            List<FunctionDecl> declaredFunctions, MetadataProvider metadataProvider,
             CloneAndSubstituteVariablesVisitor cloneVisitor) {
         this.context = context;
         this.cloneVisitor = cloneVisitor;
@@ -243,6 +244,20 @@ public abstract class AbstractInlineUdfsVisitor extends AbstractQueryExpressionV
     @Override
     public Boolean visit(LiteralExpr l, List<FunctionDecl> arg) throws AsterixException {
         return false;
+    }
+
+    @Override
+    public Boolean visit(InsertStatement insert, List<FunctionDecl> arg) throws AsterixException {
+        boolean changed = false;
+        Expression returnExpression = insert.getReturnExpression();
+        if (returnExpression != null) {
+            Pair<Boolean, Expression> rewrittenReturnExpr = inlineUdfsInExpr(returnExpression, arg);
+            insert.setReturnExpression(rewrittenReturnExpr.second);
+            changed |= rewrittenReturnExpr.first;
+        }
+        Pair<Boolean, Expression> rewrittenBodyExpression = inlineUdfsInExpr(insert.getBody(), arg);
+        insert.setBody(rewrittenBodyExpression.second);
+        return changed || rewrittenBodyExpression.first;
     }
 
     protected Pair<Boolean, Expression> inlineUdfsInExpr(Expression expr, List<FunctionDecl> arg)

@@ -23,7 +23,7 @@ import java.io.IOException;
 
 import org.apache.asterix.common.exceptions.ErrorCode;
 import org.apache.asterix.common.exceptions.RuntimeDataException;
-import org.apache.asterix.om.functions.AsterixBuiltinFunctions;
+import org.apache.asterix.om.functions.BuiltinFunctions;
 import org.apache.asterix.om.functions.IFunctionDescriptor;
 import org.apache.asterix.om.functions.IFunctionDescriptorFactory;
 import org.apache.asterix.om.types.ATypeTag;
@@ -91,7 +91,7 @@ public class Substring2Descriptor extends AbstractScalarFunctionDynamicDescripto
                         try {
                             UTF8StringPointable.substr(string, start, Integer.MAX_VALUE, builder, array);
                         } catch (StringIndexOutOfBoundsException e) {
-                            throw new RuntimeDataException(ErrorCode.ERROR_OUT_OF_BOUND, getIdentifier(), 1, start);
+                            throw new RuntimeDataException(ErrorCode.OUT_OF_BOUND, getIdentifier(), 1, start);
                         } catch (IOException e) {
                             throw new HyracksDataException(e);
                         }
@@ -110,7 +110,7 @@ public class Substring2Descriptor extends AbstractScalarFunctionDynamicDescripto
 
     @Override
     public FunctionIdentifier getIdentifier() {
-        return AsterixBuiltinFunctions.SUBSTRING2;
+        return BuiltinFunctions.SUBSTRING2;
     }
 
 }

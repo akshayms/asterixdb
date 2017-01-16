@@ -18,9 +18,9 @@
  */
 package org.apache.asterix.runtime.aggregates.stream;
 
-import org.apache.asterix.formats.nontagged.AqlSerializerDeserializerProvider;
+import org.apache.asterix.formats.nontagged.SerializerDeserializerProvider;
 import org.apache.asterix.om.base.ABoolean;
-import org.apache.asterix.om.functions.AsterixBuiltinFunctions;
+import org.apache.asterix.om.functions.BuiltinFunctions;
 import org.apache.asterix.om.functions.IFunctionDescriptor;
 import org.apache.asterix.om.functions.IFunctionDescriptorFactory;
 import org.apache.asterix.om.types.BuiltinType;
@@ -40,7 +40,7 @@ public class EmptyStreamAggregateDescriptor extends AbstractAggregateFunctionDyn
 
     private static final long serialVersionUID = 1L;
 
-    public final static FunctionIdentifier FID = AsterixBuiltinFunctions.EMPTY_STREAM;
+    public final static FunctionIdentifier FID = BuiltinFunctions.EMPTY_STREAM;
     public static final IFunctionDescriptorFactory FACTORY = new IFunctionDescriptorFactory() {
         @Override
         public IFunctionDescriptor createFunctionDescriptor() {
@@ -62,7 +62,7 @@ public class EmptyStreamAggregateDescriptor extends AbstractAggregateFunctionDyn
 
                     private ArrayBackedValueStorage resultStorage = new ArrayBackedValueStorage();
                     @SuppressWarnings("rawtypes")
-                    private ISerializerDeserializer serde = AqlSerializerDeserializerProvider.INSTANCE
+                    private ISerializerDeserializer serde = SerializerDeserializerProvider.INSTANCE
                             .getSerializerDeserializer(BuiltinType.ABOOLEAN);
 
                     boolean res = true;

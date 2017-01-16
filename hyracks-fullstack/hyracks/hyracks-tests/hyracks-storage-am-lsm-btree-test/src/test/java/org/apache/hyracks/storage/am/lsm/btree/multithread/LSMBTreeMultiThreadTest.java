@@ -24,7 +24,6 @@ import java.util.ArrayList;
 import org.apache.hyracks.api.dataflow.value.IBinaryComparatorFactory;
 import org.apache.hyracks.api.dataflow.value.ITypeTraits;
 import org.apache.hyracks.api.exceptions.HyracksDataException;
-import org.apache.hyracks.api.exceptions.HyracksException;
 import org.apache.hyracks.storage.am.btree.OrderedIndexMultiThreadTest;
 import org.apache.hyracks.storage.am.common.IIndexTestWorkerFactory;
 import org.apache.hyracks.storage.am.common.TestOperationSelector.TestOperation;
@@ -42,7 +41,7 @@ public class LSMBTreeMultiThreadTest extends OrderedIndexMultiThreadTest {
     private final LSMBTreeTestWorkerFactory workerFactory = new LSMBTreeTestWorkerFactory();
 
     @Override
-    protected void setUp() throws HyracksException {
+    protected void setUp() throws HyracksDataException {
         harness.setUp();
     }
 
@@ -53,12 +52,12 @@ public class LSMBTreeMultiThreadTest extends OrderedIndexMultiThreadTest {
 
     @Override
     protected ITreeIndex createIndex(ITypeTraits[] typeTraits, IBinaryComparatorFactory[] cmpFactories,
-            int[] bloomFilterKeyFields) throws TreeIndexException {
-        return LSMBTreeUtils.createLSMTree(harness.getVirtualBufferCaches(), harness.getFileReference(),
-                harness.getDiskBufferCache(), harness.getDiskFileMapProvider(), typeTraits, cmpFactories,
-                bloomFilterKeyFields, harness.getBoomFilterFalsePositiveRate(), harness.getMergePolicy(),
+            int[] bloomFilterKeyFields) throws TreeIndexException, HyracksDataException {
+        return LSMBTreeUtils.createLSMTree(harness.getIOManager(), harness.getVirtualBufferCaches(), harness
+                .getFileReference(), harness.getDiskBufferCache(), harness.getDiskFileMapProvider(), typeTraits,
+                cmpFactories, bloomFilterKeyFields, harness.getBoomFilterFalsePositiveRate(), harness.getMergePolicy(),
                 harness.getOperationTracker(), harness.getIOScheduler(), harness.getIOOperationCallback(), true, null,
-                null, null, null, true);
+                null, null, null, true, harness.getMetadataPageManagerFactory());
     }
 
     @Override
@@ -68,7 +67,7 @@ public class LSMBTreeMultiThreadTest extends OrderedIndexMultiThreadTest {
 
     @Override
     protected ArrayList<TestWorkloadConf> getTestWorkloadConf() {
-        ArrayList<TestWorkloadConf> workloadConfs = new ArrayList<TestWorkloadConf>();
+        ArrayList<TestWorkloadConf> workloadConfs = new ArrayList<>();
 
         // Insert only workload.
         TestOperation[] insertOnlyOps = new TestOperation[] { TestOperation.INSERT };

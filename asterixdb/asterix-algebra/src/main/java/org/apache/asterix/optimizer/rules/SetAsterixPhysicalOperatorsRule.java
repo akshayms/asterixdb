@@ -25,10 +25,10 @@ import org.apache.asterix.algebra.operators.physical.BTreeSearchPOperator;
 import org.apache.asterix.algebra.operators.physical.InvertedIndexPOperator;
 import org.apache.asterix.algebra.operators.physical.RTreeSearchPOperator;
 import org.apache.asterix.common.config.DatasetConfig.IndexType;
-import org.apache.asterix.metadata.declared.AqlMetadataProvider;
-import org.apache.asterix.metadata.declared.AqlSourceId;
+import org.apache.asterix.metadata.declared.DataSourceId;
+import org.apache.asterix.metadata.declared.MetadataProvider;
 import org.apache.asterix.metadata.entities.Dataset;
-import org.apache.asterix.om.functions.AsterixBuiltinFunctions;
+import org.apache.asterix.om.functions.BuiltinFunctions;
 import org.apache.asterix.optimizer.rules.am.AccessMethodJobGenParams;
 import org.apache.asterix.optimizer.rules.am.BTreeJobGenParams;
 import org.apache.commons.lang3.mutable.Mutable;
@@ -107,7 +107,7 @@ public class SetAsterixPhysicalOperatorsRule implements IAlgebraicRewriteRule {
                         boolean serializable = true;
                         for (Mutable<ILogicalExpression> exprRef : aggOp.getExpressions()) {
                             AbstractFunctionCallExpression expr = (AbstractFunctionCallExpression) exprRef.getValue();
-                            if (!AsterixBuiltinFunctions
+                            if (!BuiltinFunctions
                                     .isAggregateFunctionSerializable(expr.getFunctionIdentifier())) {
                                 serializable = false;
                                 break;
@@ -129,7 +129,7 @@ public class SetAsterixPhysicalOperatorsRule implements IAlgebraicRewriteRule {
                                 for (int i = 0; i < aggNum; i++) {
                                     AbstractFunctionCallExpression expr = (AbstractFunctionCallExpression) aggExprs
                                             .get(i).getValue();
-                                    AggregateFunctionCallExpression serialAggExpr = AsterixBuiltinFunctions
+                                    AggregateFunctionCallExpression serialAggExpr = BuiltinFunctions
                                             .makeSerializableAggregateFunctionExpression(expr.getFunctionIdentifier(),
                                                     expr.getArguments());
                                     if (mergeAggregationExpressionFactory.createMergeAggregation(
@@ -155,7 +155,7 @@ public class SetAsterixPhysicalOperatorsRule implements IAlgebraicRewriteRule {
                                     for (int i = 0; i < aggNum; i++) {
                                         AbstractFunctionCallExpression expr = (AbstractFunctionCallExpression) aggExprs
                                                 .get(i).getValue();
-                                        AggregateFunctionCallExpression serialAggExpr = AsterixBuiltinFunctions
+                                        AggregateFunctionCallExpression serialAggExpr = BuiltinFunctions
                                                 .makeSerializableAggregateFunctionExpression(
                                                         expr.getFunctionIdentifier(), expr.getArguments());
                                         aggOp.getExpressions().get(i).setValue(serialAggExpr);
@@ -163,7 +163,6 @@ public class SetAsterixPhysicalOperatorsRule implements IAlgebraicRewriteRule {
                                     ExternalGroupByPOperator externalGby = new ExternalGroupByPOperator(
                                             gby.getGroupByList(),
                                             physicalOptimizationConfig.getMaxFramesExternalGroupBy(),
-                                            physicalOptimizationConfig.getExternalGroupByTableSize(),
                                             (long) physicalOptimizationConfig.getMaxFramesExternalGroupBy()
                                                     * physicalOptimizationConfig.getFrameSize());
                                     generateMergeAggregationExpressions(gby, context);
@@ -222,17 +221,17 @@ public class SetAsterixPhysicalOperatorsRule implements IAlgebraicRewriteRule {
                     if (unnestExpr.getExpressionTag() == LogicalExpressionTag.FUNCTION_CALL) {
                         AbstractFunctionCallExpression f = (AbstractFunctionCallExpression) unnestExpr;
                         FunctionIdentifier fid = f.getFunctionIdentifier();
-                        if (!fid.equals(AsterixBuiltinFunctions.INDEX_SEARCH)) {
+                        if (!fid.equals(BuiltinFunctions.INDEX_SEARCH)) {
                             throw new IllegalStateException();
                         }
                         AccessMethodJobGenParams jobGenParams = new AccessMethodJobGenParams();
                         jobGenParams.readFromFuncArgs(f.getArguments());
-                        AqlMetadataProvider mp = (AqlMetadataProvider) context.getMetadataProvider();
-                        AqlSourceId dataSourceId = new AqlSourceId(jobGenParams.getDataverseName(),
+                        MetadataProvider mp = (MetadataProvider) context.getMetadataProvider();
+                        DataSourceId dataSourceId = new DataSourceId(jobGenParams.getDataverseName(),
                                 jobGenParams.getDatasetName());
                         Dataset dataset = mp.findDataset(jobGenParams.getDataverseName(),
                                 jobGenParams.getDatasetName());
-                        IDataSourceIndex<String, AqlSourceId> dsi = mp.findDataSourceIndex(jobGenParams.getIndexName(),
+                        IDataSourceIndex<String, DataSourceId> dsi = mp.findDataSourceIndex(jobGenParams.getIndexName(),
                                 dataSourceId);
                         INodeDomain storageDomain = mp.findNodeDomain(dataset.getNodeGroupName());
                         if (dsi == null) {

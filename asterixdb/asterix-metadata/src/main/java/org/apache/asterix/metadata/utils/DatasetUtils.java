@@ -29,12 +29,12 @@ import org.apache.asterix.common.config.DatasetConfig.DatasetType;
 import org.apache.asterix.common.context.CorrelatedPrefixMergePolicyFactory;
 import org.apache.asterix.common.exceptions.AsterixException;
 import org.apache.asterix.external.indexing.IndexingConstants;
-import org.apache.asterix.formats.nontagged.AqlSerializerDeserializerProvider;
-import org.apache.asterix.formats.nontagged.AqlTypeTraitProvider;
+import org.apache.asterix.formats.nontagged.SerializerDeserializerProvider;
+import org.apache.asterix.formats.nontagged.TypeTraitProvider;
 import org.apache.asterix.metadata.MetadataException;
 import org.apache.asterix.metadata.MetadataManager;
 import org.apache.asterix.metadata.MetadataTransactionContext;
-import org.apache.asterix.metadata.declared.AqlMetadataProvider;
+import org.apache.asterix.metadata.declared.MetadataProvider;
 import org.apache.asterix.metadata.entities.CompactionPolicy;
 import org.apache.asterix.metadata.entities.Dataset;
 import org.apache.asterix.metadata.entities.ExternalDatasetDetails;
@@ -120,7 +120,7 @@ public class DatasetUtils {
         if (metaItemType != null) {
             typeTraits = new ITypeTraits[numKeys + 2];
             List<Integer> indicator = ((InternalDatasetDetails) dataset.getDatasetDetails()).getKeySourceIndicator();
-            typeTraits[numKeys + 1] = AqlTypeTraitProvider.INSTANCE.getTypeTrait(metaItemType);
+            typeTraits[numKeys + 1] = TypeTraitProvider.INSTANCE.getTypeTrait(metaItemType);
             for (int i = 0; i < numKeys; i++) {
                 IAType keyType;
                 if (indicator.get(i) == 0) {
@@ -128,17 +128,17 @@ public class DatasetUtils {
                 } else {
                     keyType = metaItemType.getSubFieldType(partitioningKeys.get(i));
                 }
-                typeTraits[i] = AqlTypeTraitProvider.INSTANCE.getTypeTrait(keyType);
+                typeTraits[i] = TypeTraitProvider.INSTANCE.getTypeTrait(keyType);
             }
         } else {
             typeTraits = new ITypeTraits[numKeys + 1];
             for (int i = 0; i < numKeys; i++) {
                 IAType keyType;
                 keyType = itemType.getSubFieldType(partitioningKeys.get(i));
-                typeTraits[i] = AqlTypeTraitProvider.INSTANCE.getTypeTrait(keyType);
+                typeTraits[i] = TypeTraitProvider.INSTANCE.getTypeTrait(keyType);
             }
         }
-        typeTraits[numKeys] = AqlTypeTraitProvider.INSTANCE.getTypeTrait(itemType);
+        typeTraits[numKeys] = TypeTraitProvider.INSTANCE.getTypeTrait(itemType);
         return typeTraits;
     }
 
@@ -180,7 +180,7 @@ public class DatasetUtils {
         }
         ITypeTraits[] typeTraits = new ITypeTraits[1];
         IAType type = itemType.getSubFieldType(filterField);
-        typeTraits[0] = AqlTypeTraitProvider.INSTANCE.getTypeTrait(type);
+        typeTraits[0] = TypeTraitProvider.INSTANCE.getTypeTrait(type);
         return typeTraits;
     }
 
@@ -257,7 +257,7 @@ public class DatasetUtils {
         propertyRecordBuilder.reset(recordType);
         AMutableString aString = new AMutableString("");
         ISerializerDeserializer<AString> stringSerde =
-                AqlSerializerDeserializerProvider.INSTANCE.getSerializerDeserializer(BuiltinType.ASTRING);
+                SerializerDeserializerProvider.INSTANCE.getSerializerDeserializer(BuiltinType.ASTRING);
 
         // write field 0
         fieldValue.reset();
@@ -274,7 +274,7 @@ public class DatasetUtils {
         propertyRecordBuilder.write(out, true);
     }
 
-    public static ARecordType getMetaType(AqlMetadataProvider metadataProvider, Dataset dataset)
+    public static ARecordType getMetaType(MetadataProvider metadataProvider, Dataset dataset)
             throws AlgebricksException {
         if (dataset.hasMetaPart()) {
             return (ARecordType) metadataProvider.findType(dataset.getMetaItemTypeDataverseName(),

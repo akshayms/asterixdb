@@ -25,9 +25,11 @@ import org.apache.hyracks.api.dataflow.value.IMissingWriterFactory;
 import org.apache.hyracks.api.dataflow.value.IRecordDescriptorProvider;
 import org.apache.hyracks.api.dataflow.value.ITypeTraits;
 import org.apache.hyracks.api.dataflow.value.RecordDescriptor;
+import org.apache.hyracks.api.exceptions.HyracksDataException;
 import org.apache.hyracks.api.job.IOperatorDescriptorRegistry;
 import org.apache.hyracks.dataflow.std.file.IFileSplitProvider;
 import org.apache.hyracks.storage.am.common.api.IIndexLifecycleManagerProvider;
+import org.apache.hyracks.storage.am.common.api.IMetadataPageManagerFactory;
 import org.apache.hyracks.storage.am.common.api.ISearchOperationCallbackFactory;
 import org.apache.hyracks.storage.am.lsm.rtree.dataflow.ExternalRTreeDataflowHelperFactory;
 import org.apache.hyracks.storage.am.rtree.dataflow.RTreeSearchOperatorDescriptor;
@@ -42,15 +44,16 @@ public class ExternalRTreeSearchOperatorDescriptor extends RTreeSearchOperatorDe
             IFileSplitProvider fileSplitProvider, ITypeTraits[] typeTraits,
             IBinaryComparatorFactory[] comparatorFactories, int[] keyFields,
             ExternalRTreeDataflowHelperFactory dataflowHelperFactory, boolean retainInput, boolean retainMissing,
-            IMissingWriterFactory missingWriterFactory, ISearchOperationCallbackFactory searchOpCallbackFactory) {
+            IMissingWriterFactory missingWriterFactory, ISearchOperationCallbackFactory searchOpCallbackFactory,
+            IMetadataPageManagerFactory metadataPageManagerFactory) {
         super(spec, recDesc, storageManager, lifecycleManagerProvider, fileSplitProvider, typeTraits,
                 comparatorFactories, keyFields, dataflowHelperFactory, retainInput, retainMissing, missingWriterFactory,
-                searchOpCallbackFactory, null, null);
+                searchOpCallbackFactory, null, null, metadataPageManagerFactory);
     }
 
     @Override
     public IOperatorNodePushable createPushRuntime(final IHyracksTaskContext ctx,
-            IRecordDescriptorProvider recordDescProvider, int partition, int nPartitions) {
+            IRecordDescriptorProvider recordDescProvider, int partition, int nPartitions) throws HyracksDataException {
         return new ExternalRTreeSearchOperatorNodePushable(this, ctx, partition, recordDescProvider, keyFields);
     }
 

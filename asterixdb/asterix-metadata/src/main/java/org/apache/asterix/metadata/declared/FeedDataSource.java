@@ -26,7 +26,7 @@ import org.apache.asterix.external.feed.api.IFeed;
 import org.apache.asterix.external.feed.management.FeedConnectionId;
 import org.apache.asterix.external.operators.FeedCollectOperatorDescriptor;
 import org.apache.asterix.external.util.FeedUtils.FeedRuntimeType;
-import org.apache.asterix.formats.nontagged.AqlSerializerDeserializerProvider;
+import org.apache.asterix.formats.nontagged.SerializerDeserializerProvider;
 import org.apache.asterix.metadata.entities.Feed;
 import org.apache.asterix.metadata.entities.FeedPolicyEntity;
 import org.apache.asterix.metadata.feeds.BuiltinFeedPolicies;
@@ -50,7 +50,7 @@ import org.apache.hyracks.api.dataflow.value.ISerializerDeserializer;
 import org.apache.hyracks.api.dataflow.value.RecordDescriptor;
 import org.apache.hyracks.api.job.JobSpecification;
 
-public class FeedDataSource extends AqlDataSource implements IMutationDataSource {
+public class FeedDataSource extends DataSource implements IMutationDataSource {
 
     private final Feed feed;
     private final EntityId sourceFeedId;
@@ -62,12 +62,12 @@ public class FeedDataSource extends AqlDataSource implements IMutationDataSource
     private final List<IAType> pkTypes;
     private final List<ScalarFunctionCallExpression> keyAccessExpression;
 
-    public FeedDataSource(Feed feed, AqlSourceId id, String targetDataset, IAType itemType, IAType metaType,
+    public FeedDataSource(Feed feed, DataSourceId id, String targetDataset, IAType itemType, IAType metaType,
             List<IAType> pkTypes, List<List<String>> partitioningKeys,
             List<ScalarFunctionCallExpression> keyAccessExpression, EntityId sourceFeedId,
             IFeed.FeedType sourceFeedType, FeedRuntimeType location, String[] locations, INodeDomain domain)
             throws AlgebricksException {
-        super(id, itemType, metaType, AqlDataSourceType.FEED, domain);
+        super(id, itemType, metaType, Type.FEED, domain);
         this.feed = feed;
         this.targetDataset = targetDataset;
         this.sourceFeedId = sourceFeedId;
@@ -166,7 +166,7 @@ public class FeedDataSource extends AqlDataSource implements IMutationDataSource
 
     @Override
     public Pair<IOperatorDescriptor, AlgebricksPartitionConstraint> buildDatasourceScanRuntime(
-            AqlMetadataProvider aqlMetadataProvider, IDataSource<AqlSourceId> dataSource,
+            MetadataProvider metadataProvider, IDataSource<DataSourceId> dataSource,
             List<LogicalVariable> scanVariables, List<LogicalVariable> projectVariables, boolean projectPushed,
             List<LogicalVariable> minFilterVars, List<LogicalVariable> maxFilterVars, IOperatorSchema opSchema,
             IVariableTypeEnvironment typeEnv, JobGenContext context, JobSpecification jobSpec, Object implConfig)
@@ -178,11 +178,11 @@ public class FeedDataSource extends AqlDataSource implements IMutationDataSource
             ArrayList<ISerializerDeserializer> serdes = new ArrayList<>();
             serdes.add(payloadSerde);
             if (metaItemType != null) {
-                serdes.add(AqlSerializerDeserializerProvider.INSTANCE.getSerializerDeserializer(metaItemType));
+                serdes.add(SerializerDeserializerProvider.INSTANCE.getSerializerDeserializer(metaItemType));
             }
             if (pkTypes != null) {
                 for (IAType type : pkTypes) {
-                    serdes.add(AqlSerializerDeserializerProvider.INSTANCE.getSerializerDeserializer(type));
+                    serdes.add(SerializerDeserializerProvider.INSTANCE.getSerializerDeserializer(type));
                 }
             }
             RecordDescriptor feedDesc = new RecordDescriptor(

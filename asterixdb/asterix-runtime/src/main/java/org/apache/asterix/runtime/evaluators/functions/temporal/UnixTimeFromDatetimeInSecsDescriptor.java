@@ -23,11 +23,11 @@ import static org.apache.asterix.om.types.ATypeTag.SERIALIZED_DATETIME_TYPE_TAG;
 import java.io.DataOutput;
 
 import org.apache.asterix.dataflow.data.nontagged.serde.ADateTimeSerializerDeserializer;
-import org.apache.asterix.formats.nontagged.AqlSerializerDeserializerProvider;
+import org.apache.asterix.formats.nontagged.SerializerDeserializerProvider;
 import org.apache.asterix.om.base.AInt64;
 import org.apache.asterix.om.base.AMutableInt64;
 import org.apache.asterix.runtime.exceptions.TypeMismatchException;
-import org.apache.asterix.om.functions.AsterixBuiltinFunctions;
+import org.apache.asterix.om.functions.BuiltinFunctions;
 import org.apache.asterix.om.functions.IFunctionDescriptor;
 import org.apache.asterix.om.functions.IFunctionDescriptorFactory;
 import org.apache.asterix.om.types.ATypeTag;
@@ -75,7 +75,7 @@ public class UnixTimeFromDatetimeInSecsDescriptor extends AbstractScalarFunction
                     // possible returning types
                     private AMutableInt64 aInt64 = new AMutableInt64(0);
                     @SuppressWarnings("unchecked")
-                    private ISerializerDeserializer<AInt64> int64Serde = AqlSerializerDeserializerProvider.INSTANCE
+                    private ISerializerDeserializer<AInt64> int64Serde = SerializerDeserializerProvider.INSTANCE
                             .getSerializerDeserializer(BuiltinType.AINT64);
 
                     @Override
@@ -101,7 +101,7 @@ public class UnixTimeFromDatetimeInSecsDescriptor extends AbstractScalarFunction
 
     @Override
     public FunctionIdentifier getIdentifier() {
-        return AsterixBuiltinFunctions.UNIX_TIME_FROM_DATETIME_IN_SECS;
+        return BuiltinFunctions.UNIX_TIME_FROM_DATETIME_IN_SECS;
     }
 
 }

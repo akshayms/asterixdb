@@ -21,40 +21,49 @@ package org.apache.asterix.api.common;
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.rmi.RemoteException;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Random;
+import java.util.Set;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.asterix.algebra.base.ILangExpressionToPlanTranslator;
 import org.apache.asterix.algebra.base.ILangExpressionToPlanTranslatorFactory;
 import org.apache.asterix.api.common.Job.SubmissionMode;
 import org.apache.asterix.app.result.ResultUtil;
-import org.apache.asterix.common.config.AsterixCompilerProperties;
-import org.apache.asterix.common.config.AsterixExternalProperties;
+import org.apache.asterix.common.config.CompilerProperties;
+import org.apache.asterix.common.config.ExternalProperties;
 import org.apache.asterix.common.config.OptimizationConfUtil;
 import org.apache.asterix.common.exceptions.ACIDException;
 import org.apache.asterix.common.exceptions.AsterixException;
 import org.apache.asterix.compiler.provider.ILangCompilationProvider;
 import org.apache.asterix.compiler.provider.IRuleSetFactory;
-import org.apache.asterix.dataflow.data.common.AqlExpressionTypeComputer;
-import org.apache.asterix.dataflow.data.common.AqlMergeAggregationExpressionFactory;
-import org.apache.asterix.dataflow.data.common.AqlMissableTypeComputer;
-import org.apache.asterix.dataflow.data.common.AqlPartialAggregationTypeComputer;
 import org.apache.asterix.dataflow.data.common.ConflictingTypeResolver;
+import org.apache.asterix.dataflow.data.common.ExpressionTypeComputer;
+import org.apache.asterix.dataflow.data.common.MergeAggregationExpressionFactory;
+import org.apache.asterix.dataflow.data.common.MissableTypeComputer;
+import org.apache.asterix.dataflow.data.common.PartialAggregationTypeComputer;
 import org.apache.asterix.formats.base.IDataFormat;
 import org.apache.asterix.jobgen.QueryLogicalExpressionJobGen;
 import org.apache.asterix.lang.common.base.IAstPrintVisitorFactory;
 import org.apache.asterix.lang.common.base.IQueryRewriter;
 import org.apache.asterix.lang.common.base.IRewriterFactory;
 import org.apache.asterix.lang.common.base.Statement;
+import org.apache.asterix.lang.common.base.IReturningStatement;
 import org.apache.asterix.lang.common.rewrites.LangRewritingContext;
 import org.apache.asterix.lang.common.statement.FunctionDecl;
 import org.apache.asterix.lang.common.statement.Query;
-import org.apache.asterix.metadata.declared.AqlMetadataProvider;
+import org.apache.asterix.metadata.declared.MetadataProvider;
 import org.apache.asterix.runtime.job.listener.JobEventListenerFactory;
-import org.apache.asterix.runtime.util.AsterixAppContextInfo;
+import org.apache.asterix.runtime.util.AppContextInfo;
 import org.apache.asterix.transaction.management.service.transaction.JobIdFactory;
 import org.apache.asterix.translator.CompiledStatements.ICompiledDmlStatement;
 import org.apache.asterix.translator.IStatementExecutor.Stats;
 import org.apache.asterix.translator.SessionConfig;
+import org.apache.hyracks.algebricks.common.constraints.AlgebricksAbsolutePartitionConstraint;
 import org.apache.hyracks.algebricks.common.constraints.AlgebricksPartitionConstraint;
 import org.apache.hyracks.algebricks.common.exceptions.AlgebricksException;
 import org.apache.hyracks.algebricks.common.utils.Pair;
@@ -76,10 +85,11 @@ import org.apache.hyracks.algebricks.core.algebra.prettyprint.PlanPrettyPrinter;
 import org.apache.hyracks.algebricks.core.rewriter.base.AlgebricksOptimizationContext;
 import org.apache.hyracks.algebricks.core.rewriter.base.IOptimizationContextFactory;
 import org.apache.hyracks.algebricks.core.rewriter.base.PhysicalOptimizationConfig;
+import org.apache.hyracks.api.client.IClusterInfoCollector;
 import org.apache.hyracks.api.client.IHyracksClientConnection;
+import org.apache.hyracks.api.client.NodeControllerInfo;
 import org.apache.hyracks.api.job.JobId;
 import org.apache.hyracks.api.job.JobSpecification;
-import org.json.JSONException;
 
 /**
  * Provides helper methods for compilation of a query into a JobSpec and submission
@@ -99,11 +109,11 @@ public class APIFramework {
         this.ruleSetFactory = compilationProvider.getRuleSetFactory();
     }
 
-    private static class AqlOptimizationContextFactory implements IOptimizationContextFactory {
+    private static class OptimizationContextFactory implements IOptimizationContextFactory {
 
-        public static final AqlOptimizationContextFactory INSTANCE = new AqlOptimizationContextFactory();
+        public static final OptimizationContextFactory INSTANCE = new OptimizationContextFactory();
 
-        private AqlOptimizationContextFactory() {
+        private OptimizationContextFactory() {
         }
 
         @Override
@@ -134,8 +144,8 @@ public class APIFramework {
         }
     }
 
-    public Pair<Query, Integer> reWriteQuery(List<FunctionDecl> declaredFunctions, AqlMetadataProvider metadataProvider,
-            Query q, SessionConfig conf) throws AsterixException {
+    public Pair<IReturningStatement, Integer> reWriteQuery(List<FunctionDecl> declaredFunctions,
+            MetadataProvider metadataProvider, IReturningStatement q, SessionConfig conf) throws AsterixException {
         if (q == null) {
             return null;
         }
@@ -150,10 +160,9 @@ public class APIFramework {
         return new Pair<>(q, q.getVarCounter());
     }
 
-    public JobSpecification compileQuery(List<FunctionDecl> declaredFunctions,
-            AqlMetadataProvider queryMetadataProvider, Query rwQ, int varCounter, String outputDatasetName,
-            SessionConfig conf, ICompiledDmlStatement statement)
-            throws AlgebricksException, JSONException, RemoteException, ACIDException {
+    public JobSpecification compileQuery(IClusterInfoCollector clusterInfoCollector, MetadataProvider metadataProvider,
+            Query rwQ, int varCounter, String outputDatasetName, SessionConfig conf, ICompiledDmlStatement statement)
+            throws AlgebricksException, RemoteException, ACIDException {
 
         if (!conf.is(SessionConfig.FORMAT_ONLY_PHYSICAL_OPS) && conf.is(SessionConfig.OOB_REWRITTEN_EXPR_TREE)) {
             conf.out().println();
@@ -166,9 +175,9 @@ public class APIFramework {
         }
 
         org.apache.asterix.common.transactions.JobId asterixJobId = JobIdFactory.generateJobId();
-        queryMetadataProvider.setJobId(asterixJobId);
-        ILangExpressionToPlanTranslator t =
-                translatorFactory.createExpressionToPlanTranslator(queryMetadataProvider, varCounter);
+        metadataProvider.setJobId(asterixJobId);
+        ILangExpressionToPlanTranslator t = translatorFactory.createExpressionToPlanTranslator(metadataProvider,
+                varCounter);
 
         ILogicalPlan plan;
         // statement = null when it's a query
@@ -190,13 +199,13 @@ public class APIFramework {
         }
 
         //print the plot for the logical plan
-        AsterixExternalProperties xProps = AsterixAppContextInfo.INSTANCE.getExternalProperties();
+        ExternalProperties xProps = AppContextInfo.INSTANCE.getExternalProperties();
         Boolean plot = xProps.getIsPlottingEnabled();
         if (plot) {
             PlanPlotter.printLogicalPlan(plan);
         }
 
-        AsterixCompilerProperties compilerProperties = AsterixAppContextInfo.INSTANCE.getCompilerProperties();
+        CompilerProperties compilerProperties = AppContextInfo.INSTANCE.getCompilerProperties();
         int frameSize = compilerProperties.getFrameSize();
         int sortFrameLimit = (int) (compilerProperties.getSortMemorySize() / frameSize);
         int groupFrameLimit = (int) (compilerProperties.getGroupMemorySize() / frameSize);
@@ -206,22 +215,25 @@ public class APIFramework {
         OptimizationConfUtil.getPhysicalOptimizationConfig().setMaxFramesExternalGroupBy(groupFrameLimit);
         OptimizationConfUtil.getPhysicalOptimizationConfig().setMaxFramesForJoin(joinFrameLimit);
 
-        HeuristicCompilerFactoryBuilder builder =
-                new HeuristicCompilerFactoryBuilder(AqlOptimizationContextFactory.INSTANCE);
+        HeuristicCompilerFactoryBuilder builder = new HeuristicCompilerFactoryBuilder(
+                OptimizationContextFactory.INSTANCE);
         builder.setPhysicalOptimizationConfig(OptimizationConfUtil.getPhysicalOptimizationConfig());
         builder.setLogicalRewrites(ruleSetFactory.getLogicalRewrites());
         builder.setPhysicalRewrites(ruleSetFactory.getPhysicalRewrites());
-        IDataFormat format = queryMetadataProvider.getFormat();
+        IDataFormat format = metadataProvider.getFormat();
         ICompilerFactory compilerFactory = builder.create();
         builder.setExpressionEvalSizeComputer(format.getExpressionEvalSizeComputer());
-        builder.setIMergeAggregationExpressionFactory(new AqlMergeAggregationExpressionFactory());
-        builder.setPartialAggregationTypeComputer(new AqlPartialAggregationTypeComputer());
-        builder.setExpressionTypeComputer(AqlExpressionTypeComputer.INSTANCE);
-        builder.setMissableTypeComputer(AqlMissableTypeComputer.INSTANCE);
+        builder.setIMergeAggregationExpressionFactory(new MergeAggregationExpressionFactory());
+        builder.setPartialAggregationTypeComputer(new PartialAggregationTypeComputer());
+        builder.setExpressionTypeComputer(ExpressionTypeComputer.INSTANCE);
+        builder.setMissableTypeComputer(MissableTypeComputer.INSTANCE);
         builder.setConflictingTypeResolver(ConflictingTypeResolver.INSTANCE);
-        builder.setClusterLocations(queryMetadataProvider.getClusterLocations());
 
-        ICompiler compiler = compilerFactory.createCompiler(plan, queryMetadataProvider, t.getVarCounter());
+        int parallelism = compilerProperties.getParallelism();
+        builder.setClusterLocations(parallelism == CompilerProperties.COMPILER_PARALLELISM_AS_STORAGE
+                ? metadataProvider.getClusterLocations() : getComputationLocations(clusterInfoCollector, parallelism));
+
+        ICompiler compiler = compilerFactory.createCompiler(plan, metadataProvider, t.getVarCounter());
         if (conf.isOptimize()) {
             compiler.optimize();
             //plot optimized logical plan
@@ -247,7 +259,7 @@ public class APIFramework {
             try {
                 LogicalOperatorPrettyPrintVisitor pvisitor = new LogicalOperatorPrettyPrintVisitor();
                 PlanPrettyPrinter.printPlan(plan, pvisitor, 0);
-                ResultUtil.displayResults(pvisitor.get().toString(), conf, new Stats(), null);
+                ResultUtil.printResults(pvisitor.get().toString(), conf, new Stats(), null);
                 return null;
             } catch (IOException e) {
                 throw new AlgebricksException(e);
@@ -290,14 +302,19 @@ public class APIFramework {
         builder.setTypeTraitProvider(format.getTypeTraitProvider());
         builder.setNormalizedKeyComputerFactoryProvider(format.getNormalizedKeyComputerFactoryProvider());
 
-        JobEventListenerFactory jobEventListenerFactory =
-                new JobEventListenerFactory(asterixJobId, queryMetadataProvider.isWriteTransaction());
-        JobSpecification spec = compiler.createJob(AsterixAppContextInfo.INSTANCE, jobEventListenerFactory);
+        JobEventListenerFactory jobEventListenerFactory = new JobEventListenerFactory(asterixJobId,
+                metadataProvider.isWriteTransaction());
+        JobSpecification spec = compiler.createJob(AppContextInfo.INSTANCE, jobEventListenerFactory);
 
         if (conf.is(SessionConfig.OOB_HYRACKS_JOB)) {
             printPlanPrefix(conf, "Hyracks job");
             if (rwQ != null) {
-                conf.out().println(spec.toJSON().toString(1));
+                try {
+                    conf.out().println(
+                            new ObjectMapper().writerWithDefaultPrettyPrinter().writeValueAsString(spec.toJSON()));
+                } catch (IOException e) {
+                    throw new AlgebricksException(e);
+                }
                 conf.out().println(spec.getUserConstraints());
             }
             printPlanPostfix(conf);
@@ -336,6 +353,54 @@ public class APIFramework {
             long endTime = System.currentTimeMillis();
             double duration = (endTime - startTime) / 1000.00;
             out.println("<pre>Duration: " + duration + " sec</pre>");
+        }
+    }
+
+    // Computes the location constraints based on user-configured parallelism parameter.
+    // Note that the parallelism parameter is only a hint -- it will not be respected if it is too small or too large.
+    private AlgebricksAbsolutePartitionConstraint getComputationLocations(IClusterInfoCollector clusterInfoCollector,
+            int parallelismHint) throws AlgebricksException {
+        try {
+            Map<String, NodeControllerInfo> ncMap = clusterInfoCollector.getNodeControllerInfos();
+
+            // Unifies the handling of non-positive parallelism.
+            int parallelism = parallelismHint <= 0 ? -2 * ncMap.size() : parallelismHint;
+
+            // Calculates per node parallelism, with load balance, i.e., randomly selecting nodes with larger
+            // parallelism.
+            int numNodes = ncMap.size();
+            int numNodesWithOneMorePartition = parallelism % numNodes;
+            int perNodeParallelismMin = parallelism / numNodes;
+            int perNodeParallelismMax = parallelism / numNodes + 1;
+            List<String> allNodes = new ArrayList<>();
+            Set<String> selectedNodesWithOneMorePartition = new HashSet<>();
+            for (Map.Entry<String, NodeControllerInfo> entry : ncMap.entrySet()) {
+                allNodes.add(entry.getKey());
+            }
+            Random random = new Random();
+            for (int index = numNodesWithOneMorePartition; index >= 1; --index) {
+                int pick = random.nextInt(index);
+                selectedNodesWithOneMorePartition.add(allNodes.get(pick));
+                Collections.swap(allNodes, pick, index - 1);
+            }
+
+            // Generates cluster locations, which has duplicates for a node if it contains more than one partitions.
+            List<String> locations = new ArrayList<>();
+            for (Map.Entry<String, NodeControllerInfo> entry : ncMap.entrySet()) {
+                String nodeId = entry.getKey();
+                int numCores = entry.getValue().getNumCores();
+                int availableCores = numCores > 1 ? numCores - 1 : numCores; // Reserves one core for heartbeat.
+                int nodeParallelism = selectedNodesWithOneMorePartition.contains(nodeId) ? perNodeParallelismMax
+                        : perNodeParallelismMin;
+                int coresToUse = nodeParallelism >= 0 && nodeParallelism < availableCores ? nodeParallelism
+                        : availableCores;
+                for (int count = 0; count < coresToUse; ++count) {
+                    locations.add(nodeId);
+                }
+            }
+            return new AlgebricksAbsolutePartitionConstraint(locations.toArray(new String[0]));
+        } catch (Exception e) {
+            throw new AlgebricksException(e);
         }
     }
 }

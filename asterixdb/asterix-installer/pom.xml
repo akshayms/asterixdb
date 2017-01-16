@@ -41,6 +41,101 @@
   <build>
     <plugins>
       <plugin>
+        <groupId>org.apache.hyracks</groupId>
+        <artifactId>license-automation-plugin</artifactId>
+        <version>${hyracks.version}</version>
+        <executions>
+          <execution>
+            <phase>generate-resources</phase>
+            <goals>
+              <!--<goal>licensedownload</goal>-->
+              <goal>generate</goal>
+            </goals>
+          </execution>
+        </executions>
+        <configuration>
+          <generatedFiles>
+            <generatedFile>
+              <template>asterixdb/src/main/licenses/templates/asterix-license.ftl</template>
+              <outputFile>LICENSE</outputFile>
+            </generatedFile>
+            <generatedFile>
+              <template>hyracks-fullstack/hyracks-fullstack-license/src/main/licenses/templates/asterix-notice.ftl</template>
+              <outputFile>NOTICE</outputFile>
+            </generatedFile>
+          </generatedFiles>
+          <location>repo/</location>
+          <timeoutSecs>10</timeoutSecs>
+          <extraLicenseMaps>
+            <extraLicenseMap>
+              <file>${basedir}/../asterix-server/target/generated-resources/license_map.json</file>
+              <location>asterix/asterix-server-${project.version}-binary-assembly.zip::repo/</location>
+            </extraLicenseMap>
+          </extraLicenseMaps>
+          <models>
+            <model>${basedir}/../src/main/appended-resources/supplemental-models.xml</model>
+          </models>
+          <downloadDir>${project.build.directory}/generated-resources/license</downloadDir>
+          <excludedScopes>
+            <excludedScope>test</excludedScope>
+          </excludedScopes>
+          <excludes>
+            <exclude>org.apache.asterix:*</exclude>
+            <exclude>org.apache.algebricks:*</exclude>
+            <exclude>org.apache.hyracks:*</exclude>
+          </excludes>
+          <licenseDirectory>${basedir}/../src/main/licenses/content</licenseDirectory>
+          <templateRootDir>${basedir}/../../</templateRootDir>
+          <dependencySets>
+            <dependencySet>
+              <includes>
+                <!-- NOTE! Any changes here must be mirrored in src/main/assembly/binary-assembly.xml -->
+                <include>log4j:log4j</include>
+                <include>org.apache.asterix:asterix-events</include>
+                <include>org.apache.asterix:asterix-common</include>
+                <include>org.apache.commons:commons-lang3</include>
+                <include>org.apache.zookeeper:zookeeper</include>
+                <include>args4j:args4j</include>
+                <include>log4j:log4j</include>
+                <include>commons-io:commons-io</include>
+                <include>org.slf4j:slf4j-api</include>
+                <include>org.slf4j:slf4j-log4j12</include>
+              </includes>
+              <location>lib</location>
+            </dependencySet>
+            <dependencySet>
+              <includes>
+                <!-- NOTE! Any changes here must be mirrored in src/main/assembly/binary-assembly.xml -->
+                <include>org.apache.hadoop:hadoop-core</include>
+                <include>commons-cli:commons-cli</include>
+                <include>commons-logging:commons-logging</include>
+              </includes>
+              <location>.installer/hadoop-0.20.2/lib</location>
+            </dependencySet>
+            <dependencySet>
+              <includes>
+                <!-- NOTE! Any changes here must be mirrored in src/main/assembly/binary-assembly.xml -->
+                <include>org.apache.zookeeper:zookeeper</include>
+                <include>log4j:log4j</include>
+                <include>org.slf4j:slf4j-api</include>
+              </includes>
+              <location>.installer/zookeeper/lib</location>
+            </dependencySet>
+          </dependencySets>
+          <overrides>
+            <override>
+              <gav>org.apache.zookeeper:zookeeper:3.4.5</gav>
+              <url>http://www.apache.org/licenses/LICENSE-2.0.txt</url>
+            </override>
+          </overrides>
+          <templateProperties>
+            <packageName>Managix Install</packageName>
+            <asterixAppLocation>repo/asterix-app-${project.version}.jar, within asterix/asterix-server-${project.version}-binary-assembly.zip</asterixAppLocation>
+            <hyracksControlCcLocation>repo/hyracks-control-cc-${project.version}.jar, within asterix/asterix-server-${project.version}-binary-assembly.zip</hyracksControlCcLocation>
+          </templateProperties>
+        </configuration>
+      </plugin>
+      <plugin>
         <groupId>org.jvnet.jaxb2.maven2</groupId>
         <artifactId>maven-jaxb2-plugin</artifactId>
         <version>0.9.0</version>
@@ -159,7 +254,50 @@
           </execution>
         </executions>
       </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-dependency-plugin</artifactId>
+        <version>2.10</version>
+        <configuration>
+          <usedDependencies>
+            <usedDependency>org.apache.asterix:asterix-external-data</usedDependency>
+            <usedDependency>org.apache.asterix:asterix-server</usedDependency>
+            <usedDependency>org.apache.hadoop:hadoop-common</usedDependency>
+            <usedDependency>org.apache.hadoop:hadoop-hdfs</usedDependency>
+            <usedDependency>org.apache.hadoop:hadoop-minicluster</usedDependency>
+            <usedDependency>org.apache.zookeeper:zookeeper</usedDependency>
+          </usedDependencies>
+        </configuration>
+      </plugin>
     </plugins>
+    <pluginManagement>
+      <plugins>
+        <plugin>
+          <groupId>org.eclipse.m2e</groupId>
+          <artifactId>lifecycle-mapping</artifactId>
+          <version>1.0.0</version>
+          <configuration>
+            <lifecycleMappingMetadata>
+              <pluginExecutions>
+                <pluginExecution>
+                  <pluginExecutionFilter>
+                    <groupId>org.apache.asterix</groupId>
+                    <artifactId>license-automation-plugin</artifactId>
+                    <versionRange>${project.version}</versionRange>
+                    <goals>
+                      <goal>generate</goal>
+                    </goals>
+                  </pluginExecutionFilter>
+                  <action>
+                    <ignore />
+                  </action>
+                </pluginExecution>
+              </pluginExecutions>
+            </lifecycleMappingMetadata>
+          </configuration>
+        </plugin>
+      </plugins>
+    </pluginManagement>
   </build>
 
   <profiles>
@@ -244,21 +382,6 @@
     <dependency>
       <groupId>org.apache.zookeeper</groupId>
       <artifactId>zookeeper</artifactId>
-      <version>3.4.5</version>
-      <exclusions>
-        <exclusion>
-          <groupId>com.sun.jmx</groupId>
-          <artifactId>jmxri</artifactId>
-        </exclusion>
-        <exclusion>
-          <groupId>com.sun.jdmk</groupId>
-          <artifactId>jmxtools</artifactId>
-        </exclusion>
-        <exclusion>
-          <groupId>javax.jms</groupId>
-          <artifactId>jms</artifactId>
-        </exclusion>
-      </exclusions>
     </dependency>
     <dependency>
       <groupId>commons-io</groupId>
@@ -268,8 +391,6 @@
       <groupId>org.apache.asterix</groupId>
       <artifactId>asterix-events</artifactId>
       <version>${project.version}</version>
-      <type>jar</type>
-      <scope>compile</scope>
     </dependency>
     <dependency>
       <groupId>org.apache.asterix</groupId>
@@ -308,14 +429,53 @@
     <dependency>
       <groupId>org.apache.hadoop</groupId>
       <artifactId>hadoop-common</artifactId>
-      <version>${hadoop.version}</version>
       <scope>test</scope>
     </dependency>
     <dependency>
       <groupId>org.apache.hadoop</groupId>
       <artifactId>hadoop-minicluster</artifactId>
-      <version>${hadoop.version}</version>
-      <type>jar</type>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.codehaus.plexus</groupId>
+      <artifactId>plexus-utils</artifactId>
+      <version>3.0.20</version>
+    </dependency>
+    <dependency>
+      <groupId>org.apache.asterix</groupId>
+      <artifactId>asterix-external-data</artifactId>
+      <version>${project.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>org.apache.asterix</groupId>
+      <artifactId>asterix-common</artifactId>
+      <version>${project.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>org.apache.commons</groupId>
+      <artifactId>commons-lang3</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>javax.xml.bind</groupId>
+      <artifactId>jaxb-api</artifactId>
+      <version>2.2.2</version>
+    </dependency>
+    <dependency>
+      <groupId>org.apache.hyracks</groupId>
+      <artifactId>hyracks-api</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>log4j</groupId>
+      <artifactId>log4j</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>junit</groupId>
+      <artifactId>junit</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.apache.hadoop</groupId>
+      <artifactId>hadoop-hdfs</artifactId>
       <scope>test</scope>
     </dependency>
   </dependencies>

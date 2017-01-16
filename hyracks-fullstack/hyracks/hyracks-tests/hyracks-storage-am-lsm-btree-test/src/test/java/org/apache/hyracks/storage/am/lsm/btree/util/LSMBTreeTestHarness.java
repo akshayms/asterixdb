@@ -30,11 +30,12 @@ import java.util.logging.Logger;
 
 import org.apache.hyracks.api.context.IHyracksTaskContext;
 import org.apache.hyracks.api.exceptions.HyracksDataException;
-import org.apache.hyracks.api.exceptions.HyracksException;
 import org.apache.hyracks.api.io.FileReference;
 import org.apache.hyracks.api.io.IODeviceHandle;
 import org.apache.hyracks.control.nc.io.IOManager;
 import org.apache.hyracks.storage.am.btree.frames.BTreeLeafFrameType;
+import org.apache.hyracks.storage.am.common.api.IMetadataPageManagerFactory;
+import org.apache.hyracks.storage.am.common.freepage.AppendOnlyLinkedMetadataPageManagerFactory;
 import org.apache.hyracks.storage.am.config.AccessMethodTestsConfig;
 import org.apache.hyracks.storage.am.lsm.common.api.ILSMIOOperationCallback;
 import org.apache.hyracks.storage.am.lsm.common.api.ILSMIOOperationScheduler;
@@ -78,6 +79,7 @@ public class LSMBTreeTestHarness {
     protected ILSMMergePolicy mergePolicy;
     protected ILSMOperationTracker opTracker;
     protected ILSMIOOperationCallback ioOpCallback;
+    protected IMetadataPageManagerFactory metadataPageManagerFactory;
 
     protected final Random rnd = new Random();
     protected final static SimpleDateFormat simpleDateFormat = new SimpleDateFormat("ddMMyy-hhmmssSS");
@@ -98,19 +100,20 @@ public class LSMBTreeTestHarness {
         this.opTracker = new ThreadCountingTracker();
         this.ioOpCallback = NoOpIOOperationCallback.INSTANCE;
         this.numMutableComponents = AccessMethodTestsConfig.LSM_BTREE_NUM_MUTABLE_COMPONENTS;
+        this.metadataPageManagerFactory = new AppendOnlyLinkedMetadataPageManagerFactory();
     }
 
-    public void setUp() throws HyracksException {
+    public void setUp() throws HyracksDataException {
         ioManager = TestStorageManagerComponentHolder.getIOManager();
         ioDeviceId = 0;
-        onDiskDir = ioManager.getIODevices().get(ioDeviceId).getPath() + sep + "lsm_btree_"
+        onDiskDir = ioManager.getIODevices().get(ioDeviceId).getMount() + sep + "lsm_btree_"
                 + simpleDateFormat.format(new Date()) + sep;
-        file = new FileReference(new File(onDiskDir));
         ctx = TestUtils.create(getHyracksFrameSize());
         TestStorageManagerComponentHolder.init(diskPageSize, diskNumPages, diskMaxOpenFiles);
+        file = ioManager.resolveAbsolutePath(onDiskDir);
         diskBufferCache = TestStorageManagerComponentHolder.getBufferCache(ctx);
         diskFileMapProvider = TestStorageManagerComponentHolder.getFileMapProvider(ctx);
-        virtualBufferCaches = new ArrayList<IVirtualBufferCache>();
+        virtualBufferCaches = new ArrayList<>();
         for (int i = 0; i < numMutableComponents; i++) {
             IVirtualBufferCache virtualBufferCache = new VirtualBufferCache(new HeapBufferAllocator(), memPageSize,
                     memNumPages / numMutableComponents);
@@ -122,8 +125,9 @@ public class LSMBTreeTestHarness {
     public void tearDown() throws HyracksDataException {
         diskBufferCache.close();
         IODeviceHandle dev = ioManager.getIODevices().get(ioDeviceId);
-        File dir = new File(dev.getPath(), onDiskDir);
+        File dir = new File(dev.getMount(), onDiskDir);
         FilenameFilter filter = new FilenameFilter() {
+            @Override
             public boolean accept(File dir, String name) {
                 return !name.startsWith(".");
             }
@@ -212,5 +216,9 @@ public class LSMBTreeTestHarness {
 
     public ILSMIOOperationCallback getIOOperationCallback() {
         return ioOpCallback;
+    }
+
+    public IMetadataPageManagerFactory getMetadataPageManagerFactory() {
+        return metadataPageManagerFactory;
     }
 }

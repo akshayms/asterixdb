@@ -34,7 +34,7 @@ import org.apache.asterix.common.config.DatasetConfig.IndexType;
 import org.apache.asterix.lang.common.util.FunctionUtil;
 import org.apache.asterix.metadata.entities.Dataset;
 import org.apache.asterix.metadata.entities.Index;
-import org.apache.asterix.om.functions.AsterixBuiltinFunctions;
+import org.apache.asterix.om.functions.BuiltinFunctions;
 import org.apache.asterix.om.types.ARecordType;
 import org.apache.asterix.optimizer.rules.util.EquivalenceClassUtils;
 import org.apache.commons.lang3.mutable.Mutable;
@@ -120,13 +120,20 @@ public class BTreeAccessMethod implements IAccessMethod {
     }
 
     @Override
-    public boolean applySelectPlanTransformation(Mutable<ILogicalOperator> selectRef,
-            OptimizableOperatorSubTree subTree, Index chosenIndex, AccessMethodAnalysisContext analysisCtx,
-            IOptimizationContext context) throws AlgebricksException {
+    public boolean applySelectPlanTransformation(List<Mutable<ILogicalOperator>> afterSelectRefs,
+            Mutable<ILogicalOperator> selectRef, OptimizableOperatorSubTree subTree, Index chosenIndex,
+            AccessMethodAnalysisContext analysisCtx, IOptimizationContext context) throws AlgebricksException {
         SelectOperator select = (SelectOperator) selectRef.getValue();
         Mutable<ILogicalExpression> conditionRef = select.getCondition();
+
         ILogicalOperator primaryIndexUnnestOp = createSecondaryToPrimaryPlan(conditionRef, subTree, null, chosenIndex,
-                analysisCtx, false, false, false, context);
+                analysisCtx,
+                AccessMethodUtils.retainInputs(subTree.getDataSourceVariables(), subTree.getDataSourceRef().getValue(),
+                        afterSelectRefs),
+                false, subTree.getDataSourceRef().getValue().getInputs().get(0).getValue()
+                        .getExecutionMode() == ExecutionMode.UNPARTITIONED,
+                context);
+
         if (primaryIndexUnnestOp == null) {
             return false;
         }
@@ -484,6 +491,18 @@ public class BTreeAccessMethod implements IAccessMethod {
                     OperatorManipulationUtil.deepCopy(dataSourceOp.getInputs().get(0).getValue())));
             assignConstantSearchKeys.setExecutionMode(dataSourceOp.getExecutionMode());
             inputOp = assignConstantSearchKeys;
+        } else if (probeSubTree == null) {
+            //nonpure case
+            //Make sure that the nonpure function is unpartitioned
+            ILogicalOperator checkOp = dataSourceOp.getInputs().get(0).getValue();
+            while (checkOp.getExecutionMode() != ExecutionMode.UNPARTITIONED) {
+                if (checkOp.getInputs().size() == 1) {
+                    checkOp = checkOp.getInputs().get(0).getValue();
+                } else {
+                    return null;
+                }
+            }
+            inputOp = dataSourceOp.getInputs().get(0).getValue();
         } else {
             // All index search keys are variables.
             inputOp = probeSubTree.getRoot();
@@ -547,7 +566,7 @@ public class BTreeAccessMethod implements IAccessMethod {
                 jobGenParams.writeToFuncArgs(primaryIndexFuncArgs);
                 // An index search is expressed as an unnest-map over an
                 // index-search function.
-                IFunctionInfo primaryIndexSearch = FunctionUtil.getFunctionInfo(AsterixBuiltinFunctions.INDEX_SEARCH);
+                IFunctionInfo primaryIndexSearch = FunctionUtil.getFunctionInfo(BuiltinFunctions.INDEX_SEARCH);
                 UnnestingFunctionCallExpression primaryIndexSearchFunc =
                         new UnnestingFunctionCallExpression(primaryIndexSearch, primaryIndexFuncArgs);
                 primaryIndexSearchFunc.setReturnsUniqueValues(true);
@@ -694,8 +713,11 @@ public class BTreeAccessMethod implements IAccessMethod {
 
     private boolean probeIsOnLhs(IOptimizableFuncExpr optFuncExpr, OptimizableOperatorSubTree probeSubTree) {
         if (probeSubTree == null) {
+            if (optFuncExpr.getConstantExpressions().length == 0) {
+                return optFuncExpr.getLogicalExpr(0) == null;
+            }
             // We are optimizing a selection query. Search key is a constant. Return true if constant is on lhs.
-            return optFuncExpr.getFuncExpr().getArguments().get(0) == optFuncExpr.getConstantAtRuntimeExpr(0);
+            return optFuncExpr.getFuncExpr().getArguments().get(0) == optFuncExpr.getConstantExpr(0);
         } else {
             // We are optimizing a join query. Determine whether the feeding variable is on the lhs.
             return (optFuncExpr.getOperatorSubTree(0) == null || optFuncExpr.getOperatorSubTree(0) == probeSubTree);
@@ -711,10 +733,21 @@ public class BTreeAccessMethod implements IAccessMethod {
     }
 
     @Override
-    public boolean exprIsOptimizable(Index index, IOptimizableFuncExpr optFuncExpr) {
+    public boolean exprIsOptimizable(Index index, IOptimizableFuncExpr optFuncExpr) throws AlgebricksException {
         // If we are optimizing a join, check for the indexed nested-loop join hint.
         if (optFuncExpr.getNumLogicalVars() == 2) {
-            if (!optFuncExpr.getFuncExpr().getAnnotations().containsKey(IndexedNLJoinExpressionAnnotation.INSTANCE)) {
+            if (optFuncExpr.getOperatorSubTree(0) == optFuncExpr.getOperatorSubTree(1)) {
+                if ((optFuncExpr.getSourceVar(0) == null && optFuncExpr.getFieldType(0) != null)
+                        || (optFuncExpr.getSourceVar(1) == null && optFuncExpr.getFieldType(1) != null)) {
+                    //We are in the select case (trees are the same, and one field comes from non-scan)
+                    //We can do the index search
+                } else {
+                    //One of the vars was from an assign rather than a scan
+                    //And we were unable to determine its type
+                    return false;
+                }
+            } else if (!optFuncExpr.getFuncExpr().getAnnotations()
+                    .containsKey(IndexedNLJoinExpressionAnnotation.INSTANCE)) {
                 return false;
             }
         }

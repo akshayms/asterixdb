@@ -20,9 +20,9 @@ package org.apache.asterix.runtime.evaluators.functions;
 
 import java.io.DataOutput;
 
-import org.apache.asterix.formats.nontagged.AqlSerializerDeserializerProvider;
+import org.apache.asterix.formats.nontagged.SerializerDeserializerProvider;
 import org.apache.asterix.om.base.AMutableDouble;
-import org.apache.asterix.om.functions.AsterixBuiltinFunctions;
+import org.apache.asterix.om.functions.BuiltinFunctions;
 import org.apache.asterix.om.functions.IFunctionDescriptor;
 import org.apache.asterix.om.functions.IFunctionDescriptorFactory;
 import org.apache.asterix.om.types.BuiltinType;
@@ -51,7 +51,7 @@ public class NumericATan2Descriptor extends AbstractScalarFunctionDynamicDescrip
 
     @Override
     public FunctionIdentifier getIdentifier() {
-        return AsterixBuiltinFunctions.NUMERIC_ATAN2;
+        return BuiltinFunctions.NUMERIC_ATAN2;
     }
 
     @Override
@@ -72,7 +72,7 @@ public class NumericATan2Descriptor extends AbstractScalarFunctionDynamicDescrip
                     // For the output.
                     private final AMutableDouble aDouble = new AMutableDouble(0.0);
                     @SuppressWarnings("rawtypes")
-                    private final ISerializerDeserializer outputSerde = AqlSerializerDeserializerProvider.INSTANCE
+                    private final ISerializerDeserializer outputSerde = SerializerDeserializerProvider.INSTANCE
                             .getSerializerDeserializer(BuiltinType.ADOUBLE);
                     private final ArrayBackedValueStorage resultStorage = new ArrayBackedValueStorage();
                     private final DataOutput out = resultStorage.getDataOutput();

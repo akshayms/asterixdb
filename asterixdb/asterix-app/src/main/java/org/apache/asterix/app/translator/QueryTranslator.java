@@ -40,6 +40,7 @@ import java.util.Random;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.asterix.active.ActiveJobNotificationHandler;
 import org.apache.asterix.active.ActivityState;
 import org.apache.asterix.active.EntityId;
@@ -50,15 +51,16 @@ import org.apache.asterix.api.http.servlet.APIServlet;
 import org.apache.asterix.app.external.ExternalIndexingOperations;
 import org.apache.asterix.app.external.FeedJoint;
 import org.apache.asterix.app.external.FeedOperations;
+import org.apache.asterix.app.result.ResultHandle;
 import org.apache.asterix.app.result.ResultReader;
 import org.apache.asterix.app.result.ResultUtil;
-import org.apache.asterix.common.config.AsterixExternalProperties;
 import org.apache.asterix.common.config.ClusterProperties;
+import org.apache.asterix.common.config.ExternalProperties;
+import org.apache.asterix.common.config.GlobalConfig;
 import org.apache.asterix.common.config.DatasetConfig.DatasetType;
 import org.apache.asterix.common.config.DatasetConfig.ExternalDatasetTransactionState;
 import org.apache.asterix.common.config.DatasetConfig.ExternalFilePendingOp;
 import org.apache.asterix.common.config.DatasetConfig.IndexType;
-import org.apache.asterix.common.config.GlobalConfig;
 import org.apache.asterix.common.exceptions.ACIDException;
 import org.apache.asterix.common.exceptions.AsterixException;
 import org.apache.asterix.common.functions.FunctionSignature;
@@ -67,8 +69,8 @@ import org.apache.asterix.external.api.IAdapterFactory;
 import org.apache.asterix.external.feed.api.IActiveLifecycleEventSubscriber;
 import org.apache.asterix.external.feed.api.IActiveLifecycleEventSubscriber.ActiveLifecycleEvent;
 import org.apache.asterix.external.feed.api.IFeed;
-import org.apache.asterix.external.feed.api.IFeed.FeedType;
 import org.apache.asterix.external.feed.api.IFeedJoint;
+import org.apache.asterix.external.feed.api.IFeed.FeedType;
 import org.apache.asterix.external.feed.api.IFeedJoint.FeedJointType;
 import org.apache.asterix.external.feed.management.ActiveLifecycleEventSubscriber;
 import org.apache.asterix.external.feed.management.FeedConnectionId;
@@ -84,11 +86,12 @@ import org.apache.asterix.external.util.FeedUtils.FeedRuntimeType;
 import org.apache.asterix.file.DatasetOperations;
 import org.apache.asterix.file.DataverseOperations;
 import org.apache.asterix.file.IndexOperations;
-import org.apache.asterix.formats.nontagged.AqlTypeTraitProvider;
+import org.apache.asterix.formats.nontagged.TypeTraitProvider;
 import org.apache.asterix.lang.aql.statement.SubscribeFeedStatement;
 import org.apache.asterix.lang.common.base.IRewriterFactory;
 import org.apache.asterix.lang.common.base.IStatementRewriter;
 import org.apache.asterix.lang.common.base.Statement;
+import org.apache.asterix.lang.common.base.IReturningStatement;
 import org.apache.asterix.lang.common.expression.TypeExpression;
 import org.apache.asterix.lang.common.statement.CompactStatement;
 import org.apache.asterix.lang.common.statement.ConnectFeedStatement;
@@ -134,7 +137,7 @@ import org.apache.asterix.metadata.api.IMetadataEntity;
 import org.apache.asterix.metadata.bootstrap.MetadataBuiltinEntities;
 import org.apache.asterix.metadata.dataset.hints.DatasetHints;
 import org.apache.asterix.metadata.dataset.hints.DatasetHints.DatasetNodegroupCardinalityHint;
-import org.apache.asterix.metadata.declared.AqlMetadataProvider;
+import org.apache.asterix.metadata.declared.MetadataProvider;
 import org.apache.asterix.metadata.entities.BuiltinTypeMap;
 import org.apache.asterix.metadata.entities.CompactionPolicy;
 import org.apache.asterix.metadata.entities.Dataset;
@@ -160,7 +163,7 @@ import org.apache.asterix.om.types.AUnionType;
 import org.apache.asterix.om.types.IAType;
 import org.apache.asterix.om.types.TypeSignature;
 import org.apache.asterix.om.types.hierachy.ATypeHierarchy;
-import org.apache.asterix.runtime.util.AsterixAppContextInfo;
+import org.apache.asterix.runtime.util.AppContextInfo;
 import org.apache.asterix.transaction.management.service.transaction.DatasetIdFactory;
 import org.apache.asterix.translator.AbstractLangTranslator;
 import org.apache.asterix.translator.CompiledStatements.CompiledConnectFeedStatement;
@@ -192,19 +195,20 @@ import org.apache.hyracks.algebricks.data.IAWriterFactory;
 import org.apache.hyracks.algebricks.data.IResultSerializerFactoryProvider;
 import org.apache.hyracks.algebricks.runtime.serializer.ResultSerializerFactoryProvider;
 import org.apache.hyracks.algebricks.runtime.writers.PrinterBasedWriterFactory;
+import org.apache.hyracks.api.client.IClusterInfoCollector;
 import org.apache.hyracks.api.client.IHyracksClientConnection;
 import org.apache.hyracks.api.dataflow.value.ITypeTraits;
 import org.apache.hyracks.api.dataset.IHyracksDataset;
 import org.apache.hyracks.api.dataset.ResultSetId;
 import org.apache.hyracks.api.exceptions.HyracksDataException;
-import org.apache.hyracks.api.io.FileReference;
+import org.apache.hyracks.api.io.FileSplit;
+import org.apache.hyracks.api.io.UnmanagedFileSplit;
 import org.apache.hyracks.api.job.JobId;
 import org.apache.hyracks.api.job.JobSpecification;
-import org.apache.hyracks.dataflow.std.file.FileSplit;
 import org.apache.hyracks.storage.am.lsm.common.api.ILSMMergePolicyFactory;
-import org.json.JSONArray;
-import org.json.JSONException;
-import org.json.JSONObject;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+
+import com.fasterxml.jackson.databind.node.ObjectNode;
 
 import com.google.common.collect.Lists;
 
@@ -288,7 +292,7 @@ public class QueryTranslator extends AbstractLangTranslator implements IStatemen
                 }
                 validateOperation(activeDefaultDataverse, stmt);
                 rewriteStatement(stmt); // Rewrite the statement's AST.
-                AqlMetadataProvider metadataProvider = new AqlMetadataProvider(activeDefaultDataverse);
+                MetadataProvider metadataProvider = new MetadataProvider(activeDefaultDataverse);
                 metadataProvider.setWriterFactory(writerFactory);
                 metadataProvider.setResultSerializerFactoryProvider(resultSerializerFactoryProvider);
                 metadataProvider.setOutputFile(outputFile);
@@ -341,10 +345,10 @@ public class QueryTranslator extends AbstractLangTranslator implements IStatemen
                         break;
                     case Statement.Kind.INSERT:
                     case Statement.Kind.UPSERT:
-                        if (((InsertStatement) stmt).getReturnQuery() != null) {
+                        if (((InsertStatement) stmt).getReturnExpression() != null) {
                             metadataProvider.setResultSetId(new ResultSetId(resultSetIdCounter++));
                             metadataProvider.setResultAsyncMode(resultDelivery == ResultDelivery.ASYNC
-                                    || resultDelivery == ResultDelivery.ASYNC_DEFERRED);
+                                    || resultDelivery == ResultDelivery.DEFERRED);
                         }
                         handleInsertUpsertStatement(metadataProvider, stmt, hcc, hdc, resultDelivery, stats, false);
                         break;
@@ -376,7 +380,7 @@ public class QueryTranslator extends AbstractLangTranslator implements IStatemen
                     case Statement.Kind.QUERY:
                         metadataProvider.setResultSetId(new ResultSetId(resultSetIdCounter++));
                         metadataProvider.setResultAsyncMode(resultDelivery == ResultDelivery.ASYNC
-                                || resultDelivery == ResultDelivery.ASYNC_DEFERRED);
+                                || resultDelivery == ResultDelivery.DEFERRED);
                         handleQuery(metadataProvider, (Query) stmt, hcc, hdc, resultDelivery, stats);
                         break;
                     case Statement.Kind.COMPACT:
@@ -420,7 +424,7 @@ public class QueryTranslator extends AbstractLangTranslator implements IStatemen
             throws InstantiationException, IllegalAccessException, ClassNotFoundException {
         WriteStatement ws = (WriteStatement) stmt;
         File f = new File(ws.getFileName());
-        FileSplit outputFile = new FileSplit(ws.getNcName().getValue(), new FileReference(f));
+        FileSplit outputFile = new UnmanagedFileSplit(ws.getNcName().getValue(), f.getPath());
         IAWriterFactory writerFactory = null;
         if (ws.getWriterClassName() != null) {
             writerFactory = (IAWriterFactory) Class.forName(ws.getWriterClassName()).newInstance();
@@ -428,7 +432,7 @@ public class QueryTranslator extends AbstractLangTranslator implements IStatemen
         return new Pair<>(writerFactory, outputFile);
     }
 
-    protected Dataverse handleUseDataverseStatement(AqlMetadataProvider metadataProvider, Statement stmt)
+    protected Dataverse handleUseDataverseStatement(MetadataProvider metadataProvider, Statement stmt)
             throws Exception {
         DataverseDecl dvd = (DataverseDecl) stmt;
         String dvName = dvd.getDataverseName().getValue();
@@ -450,7 +454,7 @@ public class QueryTranslator extends AbstractLangTranslator implements IStatemen
         }
     }
 
-    protected void handleCreateDataverseStatement(AqlMetadataProvider metadataProvider, Statement stmt)
+    protected void handleCreateDataverseStatement(MetadataProvider metadataProvider, Statement stmt)
             throws Exception {
 
         CreateDataverseStatement stmtCreateDataverse = (CreateDataverseStatement) stmt;
@@ -511,7 +515,7 @@ public class QueryTranslator extends AbstractLangTranslator implements IStatemen
         }
     }
 
-    public void handleCreateDatasetStatement(AqlMetadataProvider metadataProvider, Statement stmt,
+    public void handleCreateDatasetStatement(MetadataProvider metadataProvider, Statement stmt,
             IHyracksClientConnection hcc) throws AsterixException, Exception {
         MutableObject<ProgressState> progress = new MutableObject<>(ProgressState.NO_PROGRESS);
         DatasetDecl dd = (DatasetDecl) stmt;
@@ -751,9 +755,9 @@ public class QueryTranslator extends AbstractLangTranslator implements IStatemen
             } else {
                 nodegroupCardinality = Integer.parseInt(dd.getHints().get(DatasetNodegroupCardinalityHint.NAME));
             }
-            List<String> nodeNames = AsterixAppContextInfo.INSTANCE.getMetadataProperties().getNodeNames();
+            List<String> nodeNames = AppContextInfo.INSTANCE.getMetadataProperties().getNodeNames();
             List<String> nodeNamesClone = new ArrayList<>(nodeNames);
-            String metadataNodeName = AsterixAppContextInfo.INSTANCE.getMetadataProperties().getMetadataNodeName();
+            String metadataNodeName = AppContextInfo.INSTANCE.getMetadataProperties().getMetadataNodeName();
             List<String> selectedNodes = new ArrayList<>();
             selectedNodes.add(metadataNodeName);
             numChosen++;
@@ -783,7 +787,7 @@ public class QueryTranslator extends AbstractLangTranslator implements IStatemen
 
     }
 
-    protected void handleCreateIndexStatement(AqlMetadataProvider metadataProvider, Statement stmt,
+    protected void handleCreateIndexStatement(MetadataProvider metadataProvider, Statement stmt,
             IHyracksClientConnection hcc) throws Exception {
         ProgressState progress = ProgressState.NO_PROGRESS;
         CreateIndexStatement stmtCreateIndex = (CreateIndexStatement) stmt;
@@ -895,7 +899,7 @@ public class QueryTranslator extends AbstractLangTranslator implements IStatemen
                 List<List<String>> partitioningKeys = DatasetUtils.getPartitioningKeys(ds);
                 for (List<String> partitioningKey : partitioningKeys) {
                     IAType keyType = aRecordType.getSubFieldType(partitioningKey);
-                    ITypeTraits typeTrait = AqlTypeTraitProvider.INSTANCE.getTypeTrait(keyType);
+                    ITypeTraits typeTrait = TypeTraitProvider.INSTANCE.getTypeTrait(keyType);
 
                     // If it is not a fixed length
                     if (typeTrait.getFixedLength() < 0) {
@@ -1143,7 +1147,7 @@ public class QueryTranslator extends AbstractLangTranslator implements IStatemen
         }
     }
 
-    protected void handleCreateTypeStatement(AqlMetadataProvider metadataProvider, Statement stmt) throws Exception {
+    protected void handleCreateTypeStatement(MetadataProvider metadataProvider, Statement stmt) throws Exception {
         TypeDecl stmtCreateType = (TypeDecl) stmt;
         String dataverseName = getActiveDataverse(stmtCreateType.getDataverseName());
         String typeName = stmtCreateType.getIdent().getValue();
@@ -1180,7 +1184,7 @@ public class QueryTranslator extends AbstractLangTranslator implements IStatemen
         }
     }
 
-    protected void handleDataverseDropStatement(AqlMetadataProvider metadataProvider, Statement stmt,
+    protected void handleDataverseDropStatement(MetadataProvider metadataProvider, Statement stmt,
             IHyracksClientConnection hcc) throws Exception {
         DataverseDropStatement stmtDelete = (DataverseDropStatement) stmt;
         String dataverseName = stmtDelete.getDataverseName().getValue();
@@ -1330,7 +1334,7 @@ public class QueryTranslator extends AbstractLangTranslator implements IStatemen
     }
 
     protected void disconnectFeedBeforeDelete(Identifier dvId, EntityId activeEntityId, FeedConnectionId conn,
-            AqlMetadataProvider metadataProvider, IHyracksClientConnection hcc) {
+            MetadataProvider metadataProvider, IHyracksClientConnection hcc) {
         DisconnectFeedStatement disStmt = new DisconnectFeedStatement(dvId,
                 new Identifier(activeEntityId.getEntityName()), new Identifier(conn.getDatasetName()));
         try {
@@ -1352,7 +1356,7 @@ public class QueryTranslator extends AbstractLangTranslator implements IStatemen
         return MetadataManager.INSTANCE.getDataset(mdTxnCtx, dataverseName, datasetName);
     }
 
-    public void handleDatasetDropStatement(AqlMetadataProvider metadataProvider, Statement stmt,
+    public void handleDatasetDropStatement(MetadataProvider metadataProvider, Statement stmt,
             IHyracksClientConnection hcc) throws Exception {
         DropDatasetStatement stmtDelete = (DropDatasetStatement) stmt;
         String dataverseName = getActiveDataverse(stmtDelete.getDataverseName());
@@ -1417,7 +1421,7 @@ public class QueryTranslator extends AbstractLangTranslator implements IStatemen
         }
     }
 
-    protected void doDropDataset(Dataset ds, String datasetName, AqlMetadataProvider metadataProvider,
+    protected void doDropDataset(Dataset ds, String datasetName, MetadataProvider metadataProvider,
             MutableObject<MetadataTransactionContext> mdTxnCtx, List<JobSpecification> jobsToExecute,
             String dataverseName, MutableBoolean bActiveTxn, MutableObject<ProgressState> progress,
             IHyracksClientConnection hcc) throws Exception {
@@ -1521,7 +1525,7 @@ public class QueryTranslator extends AbstractLangTranslator implements IStatemen
         }
     }
 
-    protected void handleIndexDropStatement(AqlMetadataProvider metadataProvider, Statement stmt,
+    protected void handleIndexDropStatement(MetadataProvider metadataProvider, Statement stmt,
             IHyracksClientConnection hcc) throws Exception {
 
         IndexDropStatement stmtIndexDrop = (IndexDropStatement) stmt;
@@ -1715,7 +1719,7 @@ public class QueryTranslator extends AbstractLangTranslator implements IStatemen
         }
     }
 
-    protected void handleTypeDropStatement(AqlMetadataProvider metadataProvider, Statement stmt) throws Exception {
+    protected void handleTypeDropStatement(MetadataProvider metadataProvider, Statement stmt) throws Exception {
 
         TypeDropStatement stmtTypeDrop = (TypeDropStatement) stmt;
         String dataverseName = getActiveDataverse(stmtTypeDrop.getDataverseName());
@@ -1743,7 +1747,7 @@ public class QueryTranslator extends AbstractLangTranslator implements IStatemen
         }
     }
 
-    protected void handleNodegroupDropStatement(AqlMetadataProvider metadataProvider, Statement stmt) throws Exception {
+    protected void handleNodegroupDropStatement(MetadataProvider metadataProvider, Statement stmt) throws Exception {
         NodeGroupDropStatement stmtDelete = (NodeGroupDropStatement) stmt;
         String nodegroupName = stmtDelete.getNodeGroupName().getValue();
         MetadataTransactionContext mdTxnCtx = MetadataManager.INSTANCE.beginTransaction();
@@ -1768,7 +1772,7 @@ public class QueryTranslator extends AbstractLangTranslator implements IStatemen
         }
     }
 
-    protected void handleCreateFunctionStatement(AqlMetadataProvider metadataProvider, Statement stmt)
+    protected void handleCreateFunctionStatement(MetadataProvider metadataProvider, Statement stmt)
             throws Exception {
         CreateFunctionStatement cfs = (CreateFunctionStatement) stmt;
         String dataverse = getActiveDataverseName(cfs.getSignature().getNamespace());
@@ -1798,7 +1802,7 @@ public class QueryTranslator extends AbstractLangTranslator implements IStatemen
         }
     }
 
-    protected void handleFunctionDropStatement(AqlMetadataProvider metadataProvider, Statement stmt) throws Exception {
+    protected void handleFunctionDropStatement(MetadataProvider metadataProvider, Statement stmt) throws Exception {
         FunctionDropStatement stmtDropFunction = (FunctionDropStatement) stmt;
         FunctionSignature signature = stmtDropFunction.getFunctionSignature();
         signature.setNamespace(getActiveDataverseName(signature.getNamespace()));
@@ -1825,7 +1829,7 @@ public class QueryTranslator extends AbstractLangTranslator implements IStatemen
         }
     }
 
-    protected void handleLoadStatement(AqlMetadataProvider metadataProvider, Statement stmt,
+    protected void handleLoadStatement(MetadataProvider metadataProvider, Statement stmt,
             IHyracksClientConnection hcc) throws Exception {
         LoadStatement loadStmt = (LoadStatement) stmt;
         String dataverseName = getActiveDataverse(loadStmt.getDataverseName());
@@ -1838,7 +1842,7 @@ public class QueryTranslator extends AbstractLangTranslator implements IStatemen
             CompiledLoadFromFileStatement cls = new CompiledLoadFromFileStatement(dataverseName,
                     loadStmt.getDatasetName().getValue(), loadStmt.getAdapter(), loadStmt.getProperties(),
                     loadStmt.dataIsAlreadySorted());
-            JobSpecification spec = apiFramework.compileQuery(null, metadataProvider, null, 0, null, sessionConfig,
+            JobSpecification spec = apiFramework.compileQuery(hcc, metadataProvider, null, 0, null, sessionConfig,
                     cls);
             MetadataManager.INSTANCE.commitTransaction(mdTxnCtx);
             bActiveTxn = false;
@@ -1855,63 +1859,32 @@ public class QueryTranslator extends AbstractLangTranslator implements IStatemen
         }
     }
 
-    public JobSpecification handleInsertUpsertStatement(AqlMetadataProvider metadataProvider, Statement stmt,
+    public JobSpecification handleInsertUpsertStatement(MetadataProvider metadataProvider, Statement stmt,
             IHyracksClientConnection hcc, IHyracksDataset hdc, ResultDelivery resultDelivery,
             IStatementExecutor.Stats stats, boolean compileOnly) throws Exception {
 
         InsertStatement stmtInsertUpsert = (InsertStatement) stmt;
-
         String dataverseName = getActiveDataverse(stmtInsertUpsert.getDataverseName());
         Query query = stmtInsertUpsert.getQuery();
         MetadataTransactionContext mdTxnCtx = MetadataManager.INSTANCE.beginTransaction();
         boolean bActiveTxn = true;
         metadataProvider.setMetadataTxnContext(mdTxnCtx);
-        if (stmtInsertUpsert.getReturnQuery() != null) {
-            if (!stmtInsertUpsert.getReturnQuery().getDatasets().isEmpty()) {
-                throw new AsterixException("Cannot use datasets in an insert returning query");
-            }
-            // returnQuery Rewriting (happens under the same ongoing metadata transaction)
-            Pair<Query, Integer> rewrittenReturnQuery = apiFramework.reWriteQuery(declaredFunctions, metadataProvider,
-                    stmtInsertUpsert.getReturnQuery(), sessionConfig);
-
-            stmtInsertUpsert.getQuery().setVarCounter(rewrittenReturnQuery.first.getVarCounter());
-            stmtInsertUpsert.setRewrittenReturnQuery(rewrittenReturnQuery.first);
-            stmtInsertUpsert.addToVarCounter(rewrittenReturnQuery.second);
-        }
-
         MetadataLockManager.INSTANCE.insertDeleteUpsertBegin(dataverseName,
                 dataverseName + "." + stmtInsertUpsert.getDatasetName(), query.getDataverses(), query.getDatasets());
-        JobSpecification compiled = null;
         try {
             metadataProvider.setWriteTransaction(true);
-            CompiledInsertStatement clfrqs = null;
-            switch (stmtInsertUpsert.getKind()) {
-                case Statement.Kind.INSERT:
-                    clfrqs = new CompiledInsertStatement(dataverseName, stmtInsertUpsert.getDatasetName().getValue(),
-                            query, stmtInsertUpsert.getVarCounter(), stmtInsertUpsert.getVar(),
-                            stmtInsertUpsert.getReturnQuery());
-                    break;
-                case Statement.Kind.UPSERT:
-                    clfrqs = new CompiledUpsertStatement(dataverseName, stmtInsertUpsert.getDatasetName().getValue(),
-                            query, stmtInsertUpsert.getVarCounter(), stmtInsertUpsert.getVar(),
-                            stmtInsertUpsert.getReturnQuery());
-                    break;
-                default:
-                    throw new AlgebricksException("Unsupported statement type " + stmtInsertUpsert.getKind());
-            }
-            compiled = rewriteCompileQuery(metadataProvider, query, clfrqs);
-
+            JobSpecification jobSpec = rewriteCompileInsertUpsert(hcc, metadataProvider, stmtInsertUpsert);
             MetadataManager.INSTANCE.commitTransaction(mdTxnCtx);
             bActiveTxn = false;
 
-            if (compiled != null && !compileOnly) {
-                if (stmtInsertUpsert.getReturnQuery() != null) {
-                    handleQueryResult(metadataProvider, hcc, hdc, compiled, resultDelivery, stats);
+            if (jobSpec != null && !compileOnly) {
+                if (stmtInsertUpsert.getReturnExpression() != null) {
+                    handleQueryResult(metadataProvider, hcc, hdc, jobSpec, resultDelivery, stats);
                 } else {
-                    JobUtils.runJob(hcc, compiled, true);
+                    JobUtils.runJob(hcc, jobSpec, true);
                 }
             }
-
+            return jobSpec;
         } catch (Exception e) {
             if (bActiveTxn) {
                 abort(e, e, mdTxnCtx);
@@ -1922,10 +1895,9 @@ public class QueryTranslator extends AbstractLangTranslator implements IStatemen
                     dataverseName + "." + stmtInsertUpsert.getDatasetName(), query.getDataverses(),
                     query.getDatasets());
         }
-        return compiled;
     }
 
-    public void handleDeleteStatement(AqlMetadataProvider metadataProvider, Statement stmt,
+    public void handleDeleteStatement(MetadataProvider metadataProvider, Statement stmt,
             IHyracksClientConnection hcc) throws Exception {
 
         DeleteStatement stmtDelete = (DeleteStatement) stmt;
@@ -1942,13 +1914,13 @@ public class QueryTranslator extends AbstractLangTranslator implements IStatemen
             CompiledDeleteStatement clfrqs = new CompiledDeleteStatement(stmtDelete.getVariableExpr(), dataverseName,
                     stmtDelete.getDatasetName().getValue(), stmtDelete.getCondition(), stmtDelete.getVarCounter(),
                     stmtDelete.getQuery());
-            JobSpecification compiled = rewriteCompileQuery(metadataProvider, clfrqs.getQuery(), clfrqs);
+            JobSpecification jobSpec = rewriteCompileQuery(hcc, metadataProvider, clfrqs.getQuery(), clfrqs);
 
             MetadataManager.INSTANCE.commitTransaction(mdTxnCtx);
             bActiveTxn = false;
 
-            if (compiled != null) {
-                JobUtils.runJob(hcc, compiled, true);
+            if (jobSpec != null) {
+                JobUtils.runJob(hcc, jobSpec, true);
             }
 
         } catch (Exception e) {
@@ -1964,23 +1936,52 @@ public class QueryTranslator extends AbstractLangTranslator implements IStatemen
     }
 
     @Override
-    public JobSpecification rewriteCompileQuery(AqlMetadataProvider metadataProvider, Query query,
+    public JobSpecification rewriteCompileQuery(IClusterInfoCollector clusterInfoCollector,
+            MetadataProvider metadataProvider, Query query,
             ICompiledDmlStatement stmt)
-            throws AsterixException, RemoteException, AlgebricksException, JSONException, ACIDException {
+            throws RemoteException, AlgebricksException, ACIDException {
 
         // Query Rewriting (happens under the same ongoing metadata transaction)
-        Pair<Query, Integer> reWrittenQuery = apiFramework.reWriteQuery(declaredFunctions, metadataProvider, query,
-                sessionConfig);
+        Pair<IReturningStatement, Integer> rewrittenResult = apiFramework.reWriteQuery(declaredFunctions,
+                metadataProvider, query, sessionConfig);
 
         // Query Compilation (happens under the same ongoing metadata transaction)
-        JobSpecification spec = apiFramework.compileQuery(declaredFunctions, metadataProvider, reWrittenQuery.first,
-                reWrittenQuery.second, stmt == null ? null : stmt.getDatasetName(), sessionConfig, stmt);
-
-        return spec;
-
+        return apiFramework.compileQuery(clusterInfoCollector, metadataProvider, (Query) rewrittenResult.first,
+                rewrittenResult.second, stmt == null ? null : stmt.getDatasetName(), sessionConfig, stmt);
     }
 
-    protected void handleCreateFeedStatement(AqlMetadataProvider metadataProvider, Statement stmt) throws Exception {
+    private JobSpecification rewriteCompileInsertUpsert(IClusterInfoCollector clusterInfoCollector,
+            MetadataProvider metadataProvider, InsertStatement insertUpsert)
+            throws RemoteException, AlgebricksException, ACIDException {
+
+        // Insert/upsert statement rewriting (happens under the same ongoing metadata transaction)
+        Pair<IReturningStatement, Integer> rewrittenResult = apiFramework.reWriteQuery(declaredFunctions,
+                metadataProvider, insertUpsert, sessionConfig);
+
+        InsertStatement rewrittenInsertUpsert = (InsertStatement) rewrittenResult.first;
+        String dataverseName = getActiveDataverse(rewrittenInsertUpsert.getDataverseName());
+        String datasetName = rewrittenInsertUpsert.getDatasetName().getValue();
+        CompiledInsertStatement clfrqs;
+        switch (insertUpsert.getKind()) {
+            case Statement.Kind.INSERT:
+                clfrqs = new CompiledInsertStatement(dataverseName, datasetName, rewrittenInsertUpsert.getQuery(),
+                        rewrittenInsertUpsert.getVarCounter(), rewrittenInsertUpsert.getVar(),
+                        rewrittenInsertUpsert.getReturnExpression());
+                break;
+            case Statement.Kind.UPSERT:
+                clfrqs = new CompiledUpsertStatement(dataverseName, datasetName, rewrittenInsertUpsert.getQuery(),
+                        rewrittenInsertUpsert.getVarCounter(), rewrittenInsertUpsert.getVar(),
+                        rewrittenInsertUpsert.getReturnExpression());
+                break;
+            default:
+                throw new AlgebricksException("Unsupported statement type " + rewrittenInsertUpsert.getKind());
+        }
+        // Insert/upsert statement compilation (happens under the same ongoing metadata transaction)
+        return apiFramework.compileQuery(clusterInfoCollector, metadataProvider, rewrittenInsertUpsert.getQuery(),
+                rewrittenResult.second, datasetName, sessionConfig, clfrqs);
+    }
+
+    protected void handleCreateFeedStatement(MetadataProvider metadataProvider, Statement stmt) throws Exception {
         CreateFeedStatement cfs = (CreateFeedStatement) stmt;
         String dataverseName = getActiveDataverse(cfs.getDataverseName());
         String feedName = cfs.getFeedName().getValue();
@@ -2025,7 +2026,7 @@ public class QueryTranslator extends AbstractLangTranslator implements IStatemen
         }
     }
 
-    protected void handleCreateFeedPolicyStatement(AqlMetadataProvider metadataProvider, Statement stmt)
+    protected void handleCreateFeedPolicyStatement(MetadataProvider metadataProvider, Statement stmt)
             throws AlgebricksException, HyracksDataException {
         String dataverse;
         String policy;
@@ -2087,7 +2088,7 @@ public class QueryTranslator extends AbstractLangTranslator implements IStatemen
         }
     }
 
-    protected void handleDropFeedStatement(AqlMetadataProvider metadataProvider, Statement stmt,
+    protected void handleDropFeedStatement(MetadataProvider metadataProvider, Statement stmt,
             IHyracksClientConnection hcc) throws Exception {
         FeedDropStatement stmtFeedDrop = (FeedDropStatement) stmt;
         String dataverseName = getActiveDataverse(stmtFeedDrop.getDataverseName());
@@ -2136,7 +2137,7 @@ public class QueryTranslator extends AbstractLangTranslator implements IStatemen
         }
     }
 
-    protected void handleDropFeedPolicyStatement(AqlMetadataProvider metadataProvider, Statement stmt)
+    protected void handleDropFeedPolicyStatement(MetadataProvider metadataProvider, Statement stmt)
             throws Exception {
         MetadataTransactionContext mdTxnCtx = MetadataManager.INSTANCE.beginTransaction();
         metadataProvider.setMetadataTxnContext(mdTxnCtx);
@@ -2164,7 +2165,7 @@ public class QueryTranslator extends AbstractLangTranslator implements IStatemen
         }
     }
 
-    protected void handleConnectFeedStatement(AqlMetadataProvider metadataProvider, Statement stmt,
+    protected void handleConnectFeedStatement(MetadataProvider metadataProvider, Statement stmt,
             IHyracksClientConnection hcc) throws Exception {
         ConnectFeedStatement cfs = (ConnectFeedStatement) stmt;
         String dataverseName = getActiveDataverse(cfs.getDataverseName());
@@ -2352,7 +2353,7 @@ public class QueryTranslator extends AbstractLangTranslator implements IStatemen
         return new FeedJointKey(sourceFeed.getFeedId(), appliedFunctions);
     }
 
-    protected void handleDisconnectFeedStatement(AqlMetadataProvider metadataProvider, Statement stmt,
+    protected void handleDisconnectFeedStatement(MetadataProvider metadataProvider, Statement stmt,
             IHyracksClientConnection hcc) throws Exception {
         DisconnectFeedStatement cfs = (DisconnectFeedStatement) stmt;
         String dataverseName = getActiveDataverse(cfs.getDataverseName());
@@ -2400,7 +2401,7 @@ public class QueryTranslator extends AbstractLangTranslator implements IStatemen
         }
     }
 
-    protected void handleSubscribeFeedStatement(AqlMetadataProvider metadataProvider, Statement stmt,
+    protected void handleSubscribeFeedStatement(MetadataProvider metadataProvider, Statement stmt,
             IHyracksClientConnection hcc) throws Exception {
 
         if (LOGGER.isLoggable(Level.INFO)) {
@@ -2421,7 +2422,7 @@ public class QueryTranslator extends AbstractLangTranslator implements IStatemen
         metadataProvider.getConfig().put(FeedActivityDetails.COLLECT_LOCATIONS,
                 StringUtils.join(bfs.getLocations(), ','));
 
-        JobSpecification compiled = rewriteCompileQuery(metadataProvider, bfs.getQuery(), csfs);
+        JobSpecification jobSpec = rewriteCompileQuery(hcc, metadataProvider, bfs.getQuery(), csfs);
         FeedConnectionId feedConnectionId = new FeedConnectionId(bfs.getSubscriptionRequest().getReceivingFeedId(),
                 bfs.getSubscriptionRequest().getTargetDataset());
         String dataverse = feedConnectionId.getFeedId().getDataverse();
@@ -2429,7 +2430,7 @@ public class QueryTranslator extends AbstractLangTranslator implements IStatemen
         MetadataLockManager.INSTANCE.subscribeFeedBegin(dataverse, dataverse + "." + dataset,
                 dataverse + "." + feedConnectionId.getFeedId().getEntityName());
         try {
-            JobSpecification alteredJobSpec = FeedMetadataUtil.alterJobSpecificationForFeed(compiled, feedConnectionId,
+            JobSpecification alteredJobSpec = FeedMetadataUtil.alterJobSpecificationForFeed(jobSpec, feedConnectionId,
                     bfs.getSubscriptionRequest().getPolicyParameters());
             FeedPolicyEntity policy = metadataProvider.findFeedPolicy(dataverse, bfs.getPolicy());
             if (policy == null) {
@@ -2441,7 +2442,7 @@ public class QueryTranslator extends AbstractLangTranslator implements IStatemen
             MetadataManager.INSTANCE.commitTransaction(mdTxnCtx);
             bActiveTxn = false;
 
-            if (compiled != null) {
+            if (jobSpec != null) {
                 FeedEventsListener listener = (FeedEventsListener) ActiveJobNotificationHandler.INSTANCE
                         .getActiveEntityListener(bfs.getSubscriptionRequest().getReceivingFeedId());
                 FeedConnectJobInfo activeJob = new FeedConnectJobInfo(bfs.getSubscriptionRequest().getReceivingFeedId(),
@@ -2464,7 +2465,7 @@ public class QueryTranslator extends AbstractLangTranslator implements IStatemen
         }
     }
 
-    protected void handleCompactStatement(AqlMetadataProvider metadataProvider, Statement stmt,
+    protected void handleCompactStatement(MetadataProvider metadataProvider, Statement stmt,
             IHyracksClientConnection hcc) throws Exception {
         CompactStatement compactStatement = (CompactStatement) stmt;
         String dataverseName = getActiveDataverse(compactStatement.getDataverseName());
@@ -2537,7 +2538,7 @@ public class QueryTranslator extends AbstractLangTranslator implements IStatemen
 
     protected void prepareCompactJobsForExternalDataset(List<Index> indexes, String dataverseName, String datasetName,
             Dataset ds, List<JobSpecification> jobsToExecute, ARecordType aRecordType, ARecordType metaRecordType,
-            AqlMetadataProvider metadataProvider, ARecordType enforcedType) throws AlgebricksException {
+            MetadataProvider metadataProvider, ARecordType enforcedType) throws AlgebricksException {
         for (int j = 0; j < indexes.size(); j++) {
             if (!ExternalIndexingOperations.isFileIndex(indexes.get(j))) {
                 CompiledIndexCompactStatement cics = new CompiledIndexCompactStatement(dataverseName, datasetName,
@@ -2556,26 +2557,26 @@ public class QueryTranslator extends AbstractLangTranslator implements IStatemen
         jobsToExecute.add(ExternalIndexingOperations.compactFilesIndexJobSpec(ds, metadataProvider));
     }
 
-    protected JobSpecification handleQuery(AqlMetadataProvider metadataProvider, Query query,
+    protected JobSpecification handleQuery(MetadataProvider metadataProvider, Query query,
             IHyracksClientConnection hcc, IHyracksDataset hdc, ResultDelivery resultDelivery, Stats stats)
             throws Exception {
         MetadataTransactionContext mdTxnCtx = MetadataManager.INSTANCE.beginTransaction();
         boolean bActiveTxn = true;
         metadataProvider.setMetadataTxnContext(mdTxnCtx);
         MetadataLockManager.INSTANCE.queryBegin(activeDefaultDataverse, query.getDataverses(), query.getDatasets());
-        JobSpecification compiled;
         try {
-            compiled = rewriteCompileQuery(metadataProvider, query, null);
+            JobSpecification jobSpec = rewriteCompileQuery(hcc, metadataProvider, query, null);
 
             MetadataManager.INSTANCE.commitTransaction(mdTxnCtx);
             bActiveTxn = false;
 
             if (query.isExplain()) {
                 sessionConfig.out().flush();
-                return compiled;
-            } else if (sessionConfig.isExecuteQuery() && compiled != null) {
-                handleQueryResult(metadataProvider, hcc, hdc, compiled, resultDelivery, stats);
+                return jobSpec;
+            } else if (sessionConfig.isExecuteQuery() && jobSpec != null) {
+                handleQueryResult(metadataProvider, hcc, hdc, jobSpec, resultDelivery, stats);
             }
+            return jobSpec;
         } catch (Exception e) {
             LOGGER.log(Level.INFO, e.getMessage(), e);
             if (bActiveTxn) {
@@ -2587,50 +2588,39 @@ public class QueryTranslator extends AbstractLangTranslator implements IStatemen
             // release external datasets' locks acquired during compilation of the query
             ExternalDatasetsRegistry.INSTANCE.releaseAcquiredLocks(metadataProvider);
         }
-        return compiled;
     }
 
-    private void handleQueryResult(AqlMetadataProvider metadataProvider, IHyracksClientConnection hcc,
-            IHyracksDataset hdc, JobSpecification compiled, ResultDelivery resultDelivery, Stats stats)
+    private void handleQueryResult(MetadataProvider metadataProvider, IHyracksClientConnection hcc,
+            IHyracksDataset hdc, JobSpecification jobSpec, ResultDelivery resultDelivery, Stats stats)
             throws Exception {
-        if (GlobalConfig.ASTERIX_LOGGER.isLoggable(Level.FINE)) {
-            GlobalConfig.ASTERIX_LOGGER.fine(compiled.toJSON().toString(1));
-        }
-        JobId jobId = JobUtils.runJob(hcc, compiled, false);
+        JobId jobId = JobUtils.runJob(hcc, jobSpec, false);
 
-        JSONObject response = new JSONObject();
+        ResultHandle hand;
         switch (resultDelivery) {
             case ASYNC:
-                JSONArray handle = new JSONArray();
-                handle.put(jobId.getId());
-                handle.put(metadataProvider.getResultSetId().getId());
-                response.put("handle", handle);
-                sessionConfig.out().print(response);
-                sessionConfig.out().flush();
+                hand = new ResultHandle(jobId,metadataProvider.getResultSetId());
+                ResultUtil.printResultHandle(hand,sessionConfig);
                 hcc.waitForCompletion(jobId);
+                sessionConfig.out().flush();
                 break;
-            case SYNC:
+            case IMMEDIATE:
                 hcc.waitForCompletion(jobId);
                 ResultReader resultReader = new ResultReader(hdc);
                 resultReader.open(jobId, metadataProvider.getResultSetId());
-                ResultUtil.displayResults(resultReader, sessionConfig, stats, metadataProvider.findOutputRecordType());
+                ResultUtil.printResults(resultReader, sessionConfig, stats, metadataProvider.findOutputRecordType());
                 break;
-            case ASYNC_DEFERRED:
-                handle = new JSONArray();
-                handle.put(jobId.getId());
-                handle.put(metadataProvider.getResultSetId().getId());
-                response.put("handle", handle);
+            case DEFERRED:
                 hcc.waitForCompletion(jobId);
-                sessionConfig.out().print(response);
+                hand = new ResultHandle(jobId,metadataProvider.getResultSetId());
+                ResultUtil.printResultHandle(hand,sessionConfig);
                 sessionConfig.out().flush();
                 break;
             default:
                 break;
-
         }
     }
 
-    protected void handleCreateNodeGroupStatement(AqlMetadataProvider metadataProvider, Statement stmt)
+    protected void handleCreateNodeGroupStatement(MetadataProvider metadataProvider, Statement stmt)
             throws Exception {
 
         NodegroupDecl stmtCreateNodegroup = (NodegroupDecl) stmt;
@@ -2663,7 +2653,7 @@ public class QueryTranslator extends AbstractLangTranslator implements IStatemen
         }
     }
 
-    protected void handleExternalDatasetRefreshStatement(AqlMetadataProvider metadataProvider, Statement stmt,
+    protected void handleExternalDatasetRefreshStatement(MetadataProvider metadataProvider, Statement stmt,
             IHyracksClientConnection hcc) throws Exception {
         RefreshExternalDatasetStatement stmtRefresh = (RefreshExternalDatasetStatement) stmt;
         String dataverseName = getActiveDataverse(stmtRefresh.getDataverseName());
@@ -2888,7 +2878,7 @@ public class QueryTranslator extends AbstractLangTranslator implements IStatemen
         }
     }
 
-    protected void handleRunStatement(AqlMetadataProvider metadataProvider, Statement stmt,
+    protected void handleRunStatement(MetadataProvider metadataProvider, Statement stmt,
             IHyracksClientConnection hcc) throws AsterixException, Exception {
         RunStatement runStmt = (RunStatement) stmt;
         switch (runStmt.getSystem()) {
@@ -2903,7 +2893,7 @@ public class QueryTranslator extends AbstractLangTranslator implements IStatemen
 
     }
 
-    protected void handlePregelixStatement(AqlMetadataProvider metadataProvider, Statement stmt,
+    protected void handlePregelixStatement(MetadataProvider metadataProvider, Statement stmt,
             IHyracksClientConnection hcc) throws Exception {
         RunStatement pregelixStmt = (RunStatement) stmt;
         boolean bActiveTxn = true;
@@ -2933,9 +2923,9 @@ public class QueryTranslator extends AbstractLangTranslator implements IStatemen
             }
             // Finds PREGELIX_HOME in AsterixDB configuration.
             if (pregelixHome == null) {
-                // Since there is a default value for PREGELIX_HOME in AsterixCompilerProperties,
+                // Since there is a default value for PREGELIX_HOME in CompilerProperties,
                 // pregelixHome can never be null.
-                pregelixHome = AsterixAppContextInfo.INSTANCE.getCompilerProperties().getPregelixHome();
+                pregelixHome = AppContextInfo.INSTANCE.getCompilerProperties().getPregelixHome();
             }
 
             // Constructs the pregelix command line.
@@ -2970,7 +2960,7 @@ public class QueryTranslator extends AbstractLangTranslator implements IStatemen
     }
 
     // Prepares to run a program on external runtime.
-    protected void prepareRunExternalRuntime(AqlMetadataProvider metadataProvider, IHyracksClientConnection hcc,
+    protected void prepareRunExternalRuntime(MetadataProvider metadataProvider, IHyracksClientConnection hcc,
             RunStatement pregelixStmt, String dataverseNameFrom, String dataverseNameTo, String datasetNameFrom,
             String datasetNameTo, MetadataTransactionContext mdTxnCtx) throws Exception {
         // Validates the source/sink dataverses and datasets.
@@ -3058,7 +3048,7 @@ public class QueryTranslator extends AbstractLangTranslator implements IStatemen
     protected List<String> constructPregelixCommand(RunStatement pregelixStmt, String fromDataverseName,
             String fromDatasetName, String toDataverseName, String toDatasetName) {
         // Constructs AsterixDB parameters, e.g., URL, source dataset and sink dataset.
-        AsterixExternalProperties externalProperties = AsterixAppContextInfo.INSTANCE.getExternalProperties();
+        ExternalProperties externalProperties = AppContextInfo.INSTANCE.getExternalProperties();
         String clientIP = ClusterProperties.INSTANCE.getCluster().getMasterNode().getClientIp();
         StringBuilder asterixdbParameterBuilder = new StringBuilder();
         asterixdbParameterBuilder.append(
@@ -3178,7 +3168,7 @@ public class QueryTranslator extends AbstractLangTranslator implements IStatemen
                 int j;
                 // Build the stack for the enforced type
                 for (j = 1; j < splits.size(); j++) {
-                    nestedTypeStack.push(new Pair<ARecordType, String>(nestedFieldType, splits.get(j - 1)));
+                    nestedTypeStack.push(new Pair<>(nestedFieldType, splits.get(j - 1)));
                     bridgeName = nestedFieldType.getTypeName();
                     nestedFieldType = (ARecordType) enforcedType.getSubFieldType(splits.subList(0, j));
                     if (nestedFieldType == null) {

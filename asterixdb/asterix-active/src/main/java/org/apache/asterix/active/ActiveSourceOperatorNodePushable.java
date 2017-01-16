@@ -19,13 +19,14 @@
 package org.apache.asterix.active;
 
 import org.apache.asterix.active.message.ActivePartitionMessage;
-import org.apache.asterix.common.api.IAsterixAppRuntimeContext;
+import org.apache.asterix.common.api.IAppRuntimeContext;
 import org.apache.hyracks.api.comm.IFrameWriter;
 import org.apache.hyracks.api.context.IHyracksTaskContext;
 import org.apache.hyracks.api.exceptions.HyracksDataException;
-import org.apache.hyracks.dataflow.std.base.AbstractOperatorNodePushable;
+import org.apache.hyracks.dataflow.std.base.AbstractUnaryOutputSourceOperatorNodePushable;
 
-public abstract class ActiveSourceOperatorNodePushable extends AbstractOperatorNodePushable implements IActiveRuntime {
+public abstract class ActiveSourceOperatorNodePushable extends AbstractUnaryOutputSourceOperatorNodePushable
+        implements IActiveRuntime {
 
     protected final IHyracksTaskContext ctx;
     protected final ActiveManager activeManager;
@@ -35,7 +36,7 @@ public abstract class ActiveSourceOperatorNodePushable extends AbstractOperatorN
 
     public ActiveSourceOperatorNodePushable(IHyracksTaskContext ctx, ActiveRuntimeId runtimeId) {
         this.ctx = ctx;
-        activeManager = (ActiveManager) ((IAsterixAppRuntimeContext) ctx.getJobletContext().getApplicationContext()
+        activeManager = (ActiveManager) ((IAppRuntimeContext) ctx.getJobletContext().getApplicationContext()
                 .getApplicationObject()).getActiveManager();
         this.runtimeId = runtimeId;
     }
@@ -108,10 +109,6 @@ public abstract class ActiveSourceOperatorNodePushable extends AbstractOperatorN
         }
     }
 
-    @Override
-    public final int getInputArity() {
-        return 0;
-    }
 
     @Override
     public final IFrameWriter getInputFrameWriter(int index) {

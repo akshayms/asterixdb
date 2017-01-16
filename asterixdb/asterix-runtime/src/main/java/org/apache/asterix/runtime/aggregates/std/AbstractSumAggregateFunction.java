@@ -26,7 +26,7 @@ import org.apache.asterix.dataflow.data.nontagged.serde.AInt16SerializerDeserial
 import org.apache.asterix.dataflow.data.nontagged.serde.AInt32SerializerDeserializer;
 import org.apache.asterix.dataflow.data.nontagged.serde.AInt64SerializerDeserializer;
 import org.apache.asterix.dataflow.data.nontagged.serde.AInt8SerializerDeserializer;
-import org.apache.asterix.formats.nontagged.AqlSerializerDeserializerProvider;
+import org.apache.asterix.formats.nontagged.SerializerDeserializerProvider;
 import org.apache.asterix.om.base.AMutableDouble;
 import org.apache.asterix.om.base.AMutableFloat;
 import org.apache.asterix.om.base.AMutableInt16;
@@ -34,7 +34,7 @@ import org.apache.asterix.om.base.AMutableInt32;
 import org.apache.asterix.om.base.AMutableInt64;
 import org.apache.asterix.om.base.AMutableInt8;
 import org.apache.asterix.om.base.ANull;
-import org.apache.asterix.om.functions.AsterixBuiltinFunctions;
+import org.apache.asterix.om.functions.BuiltinFunctions;
 import org.apache.asterix.om.types.ATypeTag;
 import org.apache.asterix.om.types.BuiltinType;
 import org.apache.asterix.om.types.EnumDeserializer;
@@ -94,7 +94,7 @@ public abstract class AbstractSumAggregateFunction implements IAggregateEvaluato
         } else if (aggType == ATypeTag.SYSTEM_NULL) {
             aggType = typeTag;
         } else if (typeTag != ATypeTag.SYSTEM_NULL && !ATypeHierarchy.isCompatible(typeTag, aggType)) {
-            throw new IncompatibleTypeException(AsterixBuiltinFunctions.SUM, typeTag.serialize(), aggType.serialize());
+            throw new IncompatibleTypeException(BuiltinFunctions.SUM, typeTag.serialize(), aggType.serialize());
         }
 
         if (ATypeHierarchy.canPromote(aggType, typeTag)) {
@@ -137,7 +137,7 @@ public abstract class AbstractSumAggregateFunction implements IAggregateEvaluato
                 break;
             }
             default: {
-                throw new UnsupportedItemTypeException(AsterixBuiltinFunctions.SUM, aggType.serialize());
+                throw new UnsupportedItemTypeException(BuiltinFunctions.SUM, aggType.serialize());
             }
         }
     }
@@ -149,43 +149,43 @@ public abstract class AbstractSumAggregateFunction implements IAggregateEvaluato
         try {
             switch (aggType) {
                 case INT8: {
-                    serde = AqlSerializerDeserializerProvider.INSTANCE.getSerializerDeserializer(BuiltinType.AINT8);
+                    serde = SerializerDeserializerProvider.INSTANCE.getSerializerDeserializer(BuiltinType.AINT8);
                     aInt8.setValue((byte) sum);
                     serde.serialize(aInt8, resultStorage.getDataOutput());
                     break;
                 }
                 case INT16: {
-                    serde = AqlSerializerDeserializerProvider.INSTANCE.getSerializerDeserializer(BuiltinType.AINT16);
+                    serde = SerializerDeserializerProvider.INSTANCE.getSerializerDeserializer(BuiltinType.AINT16);
                     aInt16.setValue((short) sum);
                     serde.serialize(aInt16, resultStorage.getDataOutput());
                     break;
                 }
                 case INT32: {
-                    serde = AqlSerializerDeserializerProvider.INSTANCE.getSerializerDeserializer(BuiltinType.AINT32);
+                    serde = SerializerDeserializerProvider.INSTANCE.getSerializerDeserializer(BuiltinType.AINT32);
                     aInt32.setValue((int) sum);
                     serde.serialize(aInt32, resultStorage.getDataOutput());
                     break;
                 }
                 case INT64: {
-                    serde = AqlSerializerDeserializerProvider.INSTANCE.getSerializerDeserializer(BuiltinType.AINT64);
+                    serde = SerializerDeserializerProvider.INSTANCE.getSerializerDeserializer(BuiltinType.AINT64);
                     aInt64.setValue((long) sum);
                     serde.serialize(aInt64, resultStorage.getDataOutput());
                     break;
                 }
                 case FLOAT: {
-                    serde = AqlSerializerDeserializerProvider.INSTANCE.getSerializerDeserializer(BuiltinType.AFLOAT);
+                    serde = SerializerDeserializerProvider.INSTANCE.getSerializerDeserializer(BuiltinType.AFLOAT);
                     aFloat.setValue((float) sum);
                     serde.serialize(aFloat, resultStorage.getDataOutput());
                     break;
                 }
                 case DOUBLE: {
-                    serde = AqlSerializerDeserializerProvider.INSTANCE.getSerializerDeserializer(BuiltinType.ADOUBLE);
+                    serde = SerializerDeserializerProvider.INSTANCE.getSerializerDeserializer(BuiltinType.ADOUBLE);
                     aDouble.setValue(sum);
                     serde.serialize(aDouble, resultStorage.getDataOutput());
                     break;
                 }
                 case NULL: {
-                    serde = AqlSerializerDeserializerProvider.INSTANCE.getSerializerDeserializer(BuiltinType.ANULL);
+                    serde = SerializerDeserializerProvider.INSTANCE.getSerializerDeserializer(BuiltinType.ANULL);
                     serde.serialize(ANull.NULL, resultStorage.getDataOutput());
                     break;
                 }
@@ -194,7 +194,7 @@ public abstract class AbstractSumAggregateFunction implements IAggregateEvaluato
                     break;
                 }
                 default:
-                    throw new UnsupportedItemTypeException(AsterixBuiltinFunctions.SUM, aggType.serialize());
+                    throw new UnsupportedItemTypeException(BuiltinFunctions.SUM, aggType.serialize());
             }
         } catch (IOException e) {
             throw new HyracksDataException(e);

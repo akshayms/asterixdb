@@ -32,7 +32,7 @@ public class BTreeBulkLoadRunner extends BTreeRunner {
     protected final float fillFactor;
 
     public BTreeBulkLoadRunner(int numBatches, int pageSize, int numPages, ITypeTraits[] typeTraits,
-            IBinaryComparatorFactory[] cmpFactories, float fillFactor) throws HyracksDataException, BTreeException {
+            IBinaryComparatorFactory[] cmpFactories, float fillFactor) throws BTreeException, HyracksDataException {
         super(numBatches, pageSize, numPages, typeTraits, cmpFactories);
         this.fillFactor = fillFactor;
     }

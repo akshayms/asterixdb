@@ -20,6 +20,8 @@ package org.apache.asterix.external.parser.factory;
 
 import java.util.Map;
 
+import org.apache.asterix.common.exceptions.ErrorCode;
+import org.apache.asterix.common.exceptions.RuntimeDataException;
 import org.apache.asterix.external.api.IExternalDataSourceFactory.DataSourceType;
 import org.apache.asterix.external.api.IRecordDataParser;
 import org.apache.asterix.external.api.IStreamDataParser;
@@ -34,6 +36,7 @@ import org.apache.hyracks.dataflow.common.data.parsers.IValueParserFactory;
 public class DelimitedDataParserFactory extends AbstractRecordStreamParserFactory<char[]> {
 
     private static final long serialVersionUID = 1L;
+    private static String[] formats = { "csv", "delimited-text" };
 
     @Override
     public IRecordDataParser<char[]> createRecordParser(IHyracksTaskContext ctx) throws HyracksDataException {
@@ -66,8 +69,8 @@ public class DelimitedDataParserFactory extends AbstractRecordStreamParserFactor
         if (delimiterValue == null) {
             delimiterValue = ExternalDataConstants.DEFAULT_DELIMITER;
         } else if (delimiterValue.length() != 1) {
-            throw new HyracksDataException(
-                    "'" + delimiterValue + "' is not a valid delimiter. The length of a delimiter should be 1.");
+            throw new RuntimeDataException(
+                    ErrorCode.PARSER_FACTORY_DELIMITED_DATA_PARSER_FACTORY_NOT_VALID_DELIMITER, delimiterValue);
         }
         return delimiterValue.charAt(0);
     }
@@ -79,15 +82,16 @@ public class DelimitedDataParserFactory extends AbstractRecordStreamParserFactor
         if (quoteValue == null) {
             quoteValue = ExternalDataConstants.DEFAULT_QUOTE;
         } else if (quoteValue.length() != 1) {
-            throw new HyracksDataException(
-                    "'" + quoteValue + "' is not a valid quote. The length of a quote should be 1.");
+            throw new RuntimeDataException(ErrorCode.PARSER_FACTORY_DELIMITED_DATA_PARSER_FACTORY_NOT_VALID_QUOTE,
+                    quoteValue);
         }
 
         // Since delimiter (char type value) can't be null,
         // we only check whether delimiter and quote use the same character
         if (quoteValue.charAt(0) == delimiter) {
-            throw new HyracksDataException(
-                    "Quote '" + quoteValue + "' cannot be used with the delimiter '" + delimiter + "'. ");
+            throw new RuntimeDataException(
+                    ErrorCode.PARSER_FACTORY_DELIMITED_DATA_PARSER_FACTORY_QUOTE_DELIMITER_MISMATCH, quoteValue,
+                    delimiter);
         }
 
         return quoteValue.charAt(0);
@@ -95,6 +99,11 @@ public class DelimitedDataParserFactory extends AbstractRecordStreamParserFactor
 
     @Override
     public void setMetaType(ARecordType metaType) {
+    }
+
+    @Override
+    public String[] getFormats() {
+        return formats;
     }
 
 }

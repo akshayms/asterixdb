@@ -23,8 +23,13 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
+import org.apache.hyracks.api.context.IHyracksFrameMgrContext;
 import org.apache.hyracks.api.exceptions.HyracksDataException;
 import org.apache.hyracks.control.nc.resources.memory.FrameManager;
+import org.apache.hyracks.dataflow.std.buffermanager.DeallocatableFramePool;
+import org.apache.hyracks.dataflow.std.buffermanager.FramePoolBackedFrameBufferManager;
+import org.apache.hyracks.dataflow.std.buffermanager.IDeallocatableFramePool;
+import org.apache.hyracks.dataflow.std.buffermanager.ISimpleFrameBufferManager;
 import org.junit.Before;
 import org.junit.Test;
 
@@ -33,11 +38,17 @@ public class SerializableHashTableTest {
     SerializableHashTable nsTable;
     final int NUM_PART = 101;
     TuplePointer pointer = new TuplePointer(0, 0);
-    final int num = 1000;
+    final int num = 10000;
+    protected IHyracksFrameMgrContext ctx;
+    private IDeallocatableFramePool framePool;
+    private ISimpleFrameBufferManager bufferManager;
 
     @Before
     public void setup() throws HyracksDataException {
-        nsTable = new SerializableHashTable(NUM_PART, new FrameManager(256));
+        ctx = new FrameManager(256);
+        framePool = new DeallocatableFramePool(ctx, ctx.getInitialFrameSize() * 2048);
+        bufferManager = new FramePoolBackedFrameBufferManager(framePool);
+        nsTable = new SerializableHashTable(NUM_PART, ctx, bufferManager);
     }
 
     @Test
@@ -66,7 +77,7 @@ public class SerializableHashTableTest {
         assertGetValue();
     }
 
-    private void assertGetValue() {
+    protected void assertGetValue() {
         int loop = 0;
         for (int i = 0; i < num; i++) {
             assertTrue(nsTable.getTuplePointer(i % NUM_PART, loop, pointer));
@@ -75,8 +86,9 @@ public class SerializableHashTableTest {
                 loop++;
             }
         }
+        int tupleCntPerPart = (int) Math.ceil((double) num / NUM_PART);
         for (int i = 0; i < NUM_PART; i++) {
-            assertTrue(nsTable.getTupleCount(i) == 10 || nsTable.getTupleCount(i) == 9);
+            assertTrue(nsTable.getTupleCount(i) == tupleCntPerPart || nsTable.getTupleCount(i) == tupleCntPerPart - 1);
         }
 
     }
@@ -86,7 +98,7 @@ public class SerializableHashTableTest {
         assertAllPartitionsCountIsZero();
     }
 
-    private void assertAllPartitionsCountIsZero() {
+    protected void assertAllPartitionsCountIsZero() {
         for (int i = 0; i < NUM_PART; i++) {
             assertEquals(0, nsTable.getTupleCount(i));
         }

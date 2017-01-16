@@ -2,12 +2,19 @@ DataverseUse test
 Query:
 SELECT ELEMENT [
 OrderedListConstructor [
-  Variable [ Name=$m ]
+  FieldAccessor [
+    Variable [ Name=$x ]
+    Field=int_m
+  ]
   FunctionCall test.sql-count@1[
     (
       SELECT ELEMENT [
-      FunctionCall Metadata.dataset@1[
+      FunctionCall Metadata.resolve@-1[
         LiteralExpr [STRING] [id]
+        Variable [ Name=$int_m ]
+        Variable [ Name=$x ]
+        Variable [ Name=#1 ]
+        Variable [ Name=#2 ]
       ]
       ]
       FROM [        Variable [ Name=#1 ]
@@ -29,7 +36,7 @@ Let Variable [ Name=$id ]
     Field=id
   ]
 Groupby
-  Variable [ Name=$m ]
+  Variable [ Name=$int_m ]
   :=
   FieldAccessor [
     Variable [ Name=$x ]
@@ -39,4 +46,11 @@ Groupby
   (
     x:=Variable [ Name=$x ]
   )
+
+Orderby
+  FieldAccessor [
+    Variable [ Name=$x ]
+    Field=int_m
+  ]
+  ASC
 

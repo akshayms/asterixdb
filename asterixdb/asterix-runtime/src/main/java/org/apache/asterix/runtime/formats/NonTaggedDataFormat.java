@@ -26,21 +26,21 @@ import java.util.List;
 import java.util.Map;
 
 import org.apache.asterix.common.config.GlobalConfig;
-import org.apache.asterix.dataflow.data.nontagged.AqlMissingWriterFactory;
+import org.apache.asterix.dataflow.data.nontagged.MissingWriterFactory;
 import org.apache.asterix.formats.base.IDataFormat;
-import org.apache.asterix.formats.nontagged.AqlADMPrinterFactoryProvider;
-import org.apache.asterix.formats.nontagged.AqlBinaryBooleanInspectorImpl;
-import org.apache.asterix.formats.nontagged.AqlBinaryComparatorFactoryProvider;
-import org.apache.asterix.formats.nontagged.AqlBinaryHashFunctionFactoryProvider;
-import org.apache.asterix.formats.nontagged.AqlBinaryHashFunctionFamilyProvider;
-import org.apache.asterix.formats.nontagged.AqlBinaryIntegerInspector;
-import org.apache.asterix.formats.nontagged.AqlCSVPrinterFactoryProvider;
-import org.apache.asterix.formats.nontagged.AqlCleanJSONPrinterFactoryProvider;
-import org.apache.asterix.formats.nontagged.AqlLosslessJSONPrinterFactoryProvider;
-import org.apache.asterix.formats.nontagged.AqlNormalizedKeyComputerFactoryProvider;
-import org.apache.asterix.formats.nontagged.AqlPredicateEvaluatorFactoryProvider;
-import org.apache.asterix.formats.nontagged.AqlSerializerDeserializerProvider;
-import org.apache.asterix.formats.nontagged.AqlTypeTraitProvider;
+import org.apache.asterix.formats.nontagged.ADMPrinterFactoryProvider;
+import org.apache.asterix.formats.nontagged.BinaryBooleanInspector;
+import org.apache.asterix.formats.nontagged.BinaryComparatorFactoryProvider;
+import org.apache.asterix.formats.nontagged.BinaryHashFunctionFactoryProvider;
+import org.apache.asterix.formats.nontagged.BinaryHashFunctionFamilyProvider;
+import org.apache.asterix.formats.nontagged.BinaryIntegerInspector;
+import org.apache.asterix.formats.nontagged.CSVPrinterFactoryProvider;
+import org.apache.asterix.formats.nontagged.CleanJSONPrinterFactoryProvider;
+import org.apache.asterix.formats.nontagged.LosslessJSONPrinterFactoryProvider;
+import org.apache.asterix.formats.nontagged.NormalizedKeyComputerFactoryProvider;
+import org.apache.asterix.formats.nontagged.PredicateEvaluatorFactoryProvider;
+import org.apache.asterix.formats.nontagged.SerializerDeserializerProvider;
+import org.apache.asterix.formats.nontagged.TypeTraitProvider;
 import org.apache.asterix.om.base.ABoolean;
 import org.apache.asterix.om.base.AInt32;
 import org.apache.asterix.om.base.AMissing;
@@ -48,7 +48,7 @@ import org.apache.asterix.om.base.AOrderedList;
 import org.apache.asterix.om.base.AString;
 import org.apache.asterix.om.base.IAObject;
 import org.apache.asterix.om.constants.AsterixConstantValue;
-import org.apache.asterix.om.functions.AsterixBuiltinFunctions;
+import org.apache.asterix.om.functions.BuiltinFunctions;
 import org.apache.asterix.om.functions.FunctionManagerHolder;
 import org.apache.asterix.om.functions.IFunctionDescriptor;
 import org.apache.asterix.om.functions.IFunctionDescriptorFactory;
@@ -162,27 +162,27 @@ public class NonTaggedDataFormat implements IDataFormat {
 
     @Override
     public IBinaryBooleanInspectorFactory getBinaryBooleanInspectorFactory() {
-        return AqlBinaryBooleanInspectorImpl.FACTORY;
+        return BinaryBooleanInspector.FACTORY;
     }
 
     @Override
     public IBinaryComparatorFactoryProvider getBinaryComparatorFactoryProvider() {
-        return AqlBinaryComparatorFactoryProvider.INSTANCE;
+        return BinaryComparatorFactoryProvider.INSTANCE;
     }
 
     @Override
     public IBinaryHashFunctionFactoryProvider getBinaryHashFunctionFactoryProvider() {
-        return AqlBinaryHashFunctionFactoryProvider.INSTANCE;
+        return BinaryHashFunctionFactoryProvider.INSTANCE;
     }
 
     @Override
     public ISerializerDeserializerProvider getSerdeProvider() {
-        return AqlSerializerDeserializerProvider.INSTANCE; // done
+        return SerializerDeserializerProvider.INSTANCE; // done
     }
 
     @Override
     public ITypeTraitProvider getTypeTraitProvider() {
-        return AqlTypeTraitProvider.INSTANCE;
+        return TypeTraitProvider.INSTANCE;
     }
 
     @SuppressWarnings("unchecked")
@@ -202,7 +202,7 @@ public class NonTaggedDataFormat implements IDataFormat {
                     fieldFound = true;
                     try {
                         AInt32 ai = new AInt32(i);
-                        AqlSerializerDeserializerProvider.INSTANCE.getSerializerDeserializer(ai.getType()).serialize(ai,
+                        SerializerDeserializerProvider.INSTANCE.getSerializerDeserializer(ai.getType()).serialize(ai,
                                 dos);
                     } catch (HyracksDataException e) {
                         throw new AlgebricksException(e);
@@ -219,7 +219,7 @@ public class NonTaggedDataFormat implements IDataFormat {
             if (fldName.size() == 1) {
                 AString as = new AString(fldName.get(0));
                 try {
-                    AqlSerializerDeserializerProvider.INSTANCE.getSerializerDeserializer(as.getType()).serialize(as,
+                    SerializerDeserializerProvider.INSTANCE.getSerializerDeserializer(as.getType()).serialize(as,
                             dos);
                 } catch (HyracksDataException e) {
                     throw new AlgebricksException(e);
@@ -227,7 +227,7 @@ public class NonTaggedDataFormat implements IDataFormat {
             } else {
                 AOrderedList as = new AOrderedList(fldName);
                 try {
-                    AqlSerializerDeserializerProvider.INSTANCE.getSerializerDeserializer(as.getType()).serialize(as,
+                    SerializerDeserializerProvider.INSTANCE.getSerializerDeserializer(as.getType()).serialize(as,
                             dos);
                 } catch (HyracksDataException e) {
                     throw new AlgebricksException(e);
@@ -260,7 +260,7 @@ public class NonTaggedDataFormat implements IDataFormat {
         DataOutput dos1 = abvs1.getDataOutput();
         try {
             AInt32 ai = new AInt32(dimension);
-            AqlSerializerDeserializerProvider.INSTANCE.getSerializerDeserializer(ai.getType()).serialize(ai, dos1);
+            SerializerDeserializerProvider.INSTANCE.getSerializerDeserializer(ai.getType()).serialize(ai, dos1);
         } catch (HyracksDataException e) {
             throw new AlgebricksException(e);
         }
@@ -272,7 +272,7 @@ public class NonTaggedDataFormat implements IDataFormat {
             DataOutput dos2 = abvs2.getDataOutput();
             try {
                 AInt32 ai = new AInt32(i);
-                AqlSerializerDeserializerProvider.INSTANCE.getSerializerDeserializer(ai.getType()).serialize(ai, dos2);
+                SerializerDeserializerProvider.INSTANCE.getSerializerDeserializer(ai.getType()).serialize(ai, dos2);
             } catch (HyracksDataException e) {
                 throw new AlgebricksException(e);
             }
@@ -302,7 +302,7 @@ public class NonTaggedDataFormat implements IDataFormat {
                     DataOutput dos = abvs.getDataOutput();
                     try {
                         AInt32 ai = new AInt32(i);
-                        AqlSerializerDeserializerProvider.INSTANCE.getSerializerDeserializer(ai.getType()).serialize(ai,
+                        SerializerDeserializerProvider.INSTANCE.getSerializerDeserializer(ai.getType()).serialize(ai,
                                 dos);
                     } catch (HyracksDataException e) {
                         throw new AlgebricksException(e);
@@ -311,8 +311,8 @@ public class NonTaggedDataFormat implements IDataFormat {
                             new ConstantEvalFactory(Arrays.copyOf(abvs.getByteArray(), abvs.getLength()));
                     IScalarEvaluatorFactory evalFactory =
                             new FieldAccessByIndexEvalFactory(recordEvalFactory, fldIndexEvalFactory, recType);
-                    IFunctionInfo finfoAccess = AsterixBuiltinFunctions
-                            .getAsterixFunctionInfo(AsterixBuiltinFunctions.FIELD_ACCESS_BY_INDEX);
+                    IFunctionInfo finfoAccess = BuiltinFunctions
+                            .getAsterixFunctionInfo(BuiltinFunctions.FIELD_ACCESS_BY_INDEX);
 
                     ScalarFunctionCallExpression partitionFun = new ScalarFunctionCallExpression(finfoAccess,
                             new MutableObject<ILogicalExpression>(new VariableReferenceExpression(METADATA_DUMMY_VAR)),
@@ -329,13 +329,13 @@ public class NonTaggedDataFormat implements IDataFormat {
             DataOutput dos = abvs.getDataOutput();
             AOrderedList as = new AOrderedList(fldName);
             try {
-                AqlSerializerDeserializerProvider.INSTANCE.getSerializerDeserializer(as.getType()).serialize(as, dos);
+                SerializerDeserializerProvider.INSTANCE.getSerializerDeserializer(as.getType()).serialize(as, dos);
             } catch (HyracksDataException e) {
                 throw new AlgebricksException(e);
             }
             IScalarEvaluatorFactory evalFactory = new FieldAccessNestedEvalFactory(recordEvalFactory, recType, fldName);
             IFunctionInfo finfoAccess =
-                    AsterixBuiltinFunctions.getAsterixFunctionInfo(AsterixBuiltinFunctions.FIELD_ACCESS_NESTED);
+                    BuiltinFunctions.getAsterixFunctionInfo(BuiltinFunctions.FIELD_ACCESS_NESTED);
 
             ScalarFunctionCallExpression partitionFun = new ScalarFunctionCallExpression(finfoAccess,
                     new MutableObject<ILogicalExpression>(new VariableReferenceExpression(METADATA_DUMMY_VAR)),
@@ -368,14 +368,14 @@ public class NonTaggedDataFormat implements IDataFormat {
     }
 
     void registerTypeInferers() {
-        functionTypeInferers.put(AsterixBuiltinFunctions.LISTIFY, new FunctionTypeInferer() {
+        functionTypeInferers.put(BuiltinFunctions.LISTIFY, new FunctionTypeInferer() {
             @Override
             public void infer(ILogicalExpression expr, IFunctionDescriptor fd, IVariableTypeEnvironment context)
                     throws AlgebricksException {
                 ((ListifyAggregateDescriptor) fd).reset((AOrderedListType) context.getType(expr));
             }
         });
-        functionTypeInferers.put(AsterixBuiltinFunctions.RECORD_MERGE, new FunctionTypeInferer() {
+        functionTypeInferers.put(BuiltinFunctions.RECORD_MERGE, new FunctionTypeInferer() {
             @Override
             public void infer(ILogicalExpression expr, IFunctionDescriptor fd, IVariableTypeEnvironment context)
                     throws AlgebricksException {
@@ -388,7 +388,7 @@ public class NonTaggedDataFormat implements IDataFormat {
             }
         });
 
-        functionTypeInferers.put(AsterixBuiltinFunctions.DEEP_EQUAL, new FunctionTypeInferer() {
+        functionTypeInferers.put(BuiltinFunctions.DEEP_EQUAL, new FunctionTypeInferer() {
 
             @Override
             public void infer(ILogicalExpression expr, IFunctionDescriptor fd, IVariableTypeEnvironment context)
@@ -401,7 +401,7 @@ public class NonTaggedDataFormat implements IDataFormat {
             }
         });
 
-        functionTypeInferers.put(AsterixBuiltinFunctions.ADD_FIELDS, new FunctionTypeInferer() {
+        functionTypeInferers.put(BuiltinFunctions.ADD_FIELDS, new FunctionTypeInferer() {
 
             @Override
             public void infer(ILogicalExpression expr, IFunctionDescriptor fd, IVariableTypeEnvironment context)
@@ -422,7 +422,7 @@ public class NonTaggedDataFormat implements IDataFormat {
             }
         });
 
-        functionTypeInferers.put(AsterixBuiltinFunctions.REMOVE_FIELDS, new FunctionTypeInferer() {
+        functionTypeInferers.put(BuiltinFunctions.REMOVE_FIELDS, new FunctionTypeInferer() {
 
             @Override
             public void infer(ILogicalExpression expr, IFunctionDescriptor fd, IVariableTypeEnvironment context)
@@ -442,7 +442,7 @@ public class NonTaggedDataFormat implements IDataFormat {
                         + " org.apache.asterix.om.types.IAType)", outType, type0, type1);
             }
         });
-        functionTypeInferers.put(AsterixBuiltinFunctions.CAST_TYPE, new FunctionTypeInferer() {
+        functionTypeInferers.put(BuiltinFunctions.CAST_TYPE, new FunctionTypeInferer() {
             @Override
             public void infer(ILogicalExpression expr, IFunctionDescriptor fd, IVariableTypeEnvironment context)
                     throws AlgebricksException {
@@ -453,7 +453,7 @@ public class NonTaggedDataFormat implements IDataFormat {
                         it);
             }
         });
-        functionTypeInferers.put(AsterixBuiltinFunctions.OPEN_RECORD_CONSTRUCTOR, new FunctionTypeInferer() {
+        functionTypeInferers.put(BuiltinFunctions.OPEN_RECORD_CONSTRUCTOR, new FunctionTypeInferer() {
             @Override
             public void infer(ILogicalExpression expr, IFunctionDescriptor fd, IVariableTypeEnvironment context)
                     throws AlgebricksException {
@@ -482,28 +482,28 @@ public class NonTaggedDataFormat implements IDataFormat {
                 return open;
             }
         });
-        functionTypeInferers.put(AsterixBuiltinFunctions.CLOSED_RECORD_CONSTRUCTOR, new FunctionTypeInferer() {
+        functionTypeInferers.put(BuiltinFunctions.CLOSED_RECORD_CONSTRUCTOR, new FunctionTypeInferer() {
             @Override
             public void infer(ILogicalExpression expr, IFunctionDescriptor fd, IVariableTypeEnvironment context)
                     throws AlgebricksException {
                 ((ClosedRecordConstructorDescriptor) fd).reset((ARecordType) context.getType(expr));
             }
         });
-        functionTypeInferers.put(AsterixBuiltinFunctions.ORDERED_LIST_CONSTRUCTOR, new FunctionTypeInferer() {
+        functionTypeInferers.put(BuiltinFunctions.ORDERED_LIST_CONSTRUCTOR, new FunctionTypeInferer() {
             @Override
             public void infer(ILogicalExpression expr, IFunctionDescriptor fd, IVariableTypeEnvironment context)
                     throws AlgebricksException {
                 ((OrderedListConstructorDescriptor) fd).reset((AOrderedListType) context.getType(expr));
             }
         });
-        functionTypeInferers.put(AsterixBuiltinFunctions.UNORDERED_LIST_CONSTRUCTOR, new FunctionTypeInferer() {
+        functionTypeInferers.put(BuiltinFunctions.UNORDERED_LIST_CONSTRUCTOR, new FunctionTypeInferer() {
             @Override
             public void infer(ILogicalExpression expr, IFunctionDescriptor fd, IVariableTypeEnvironment context)
                     throws AlgebricksException {
                 ((UnorderedListConstructorDescriptor) fd).reset((AUnorderedListType) context.getType(expr));
             }
         });
-        functionTypeInferers.put(AsterixBuiltinFunctions.FIELD_ACCESS_BY_INDEX, new FunctionTypeInferer() {
+        functionTypeInferers.put(BuiltinFunctions.FIELD_ACCESS_BY_INDEX, new FunctionTypeInferer() {
             @Override
             public void infer(ILogicalExpression expr, IFunctionDescriptor fd, IVariableTypeEnvironment context)
                     throws AlgebricksException {
@@ -533,7 +533,7 @@ public class NonTaggedDataFormat implements IDataFormat {
                 }
             }
         });
-        functionTypeInferers.put(AsterixBuiltinFunctions.FIELD_ACCESS_NESTED, new FunctionTypeInferer() {
+        functionTypeInferers.put(BuiltinFunctions.FIELD_ACCESS_NESTED, new FunctionTypeInferer() {
             @Override
             public void infer(ILogicalExpression expr, IFunctionDescriptor fd, IVariableTypeEnvironment context)
                     throws AlgebricksException {
@@ -563,7 +563,7 @@ public class NonTaggedDataFormat implements IDataFormat {
                 }
             }
         });
-        functionTypeInferers.put(AsterixBuiltinFunctions.GET_RECORD_FIELDS, new FunctionTypeInferer() {
+        functionTypeInferers.put(BuiltinFunctions.GET_RECORD_FIELDS, new FunctionTypeInferer() {
             @Override
             public void infer(ILogicalExpression expr, IFunctionDescriptor fd, IVariableTypeEnvironment context)
                     throws AlgebricksException {
@@ -581,7 +581,7 @@ public class NonTaggedDataFormat implements IDataFormat {
                 }
             }
         });
-        functionTypeInferers.put(AsterixBuiltinFunctions.GET_RECORD_FIELD_VALUE, new FunctionTypeInferer() {
+        functionTypeInferers.put(BuiltinFunctions.GET_RECORD_FIELD_VALUE, new FunctionTypeInferer() {
             @Override
             public void infer(ILogicalExpression expr, IFunctionDescriptor fd, IVariableTypeEnvironment context)
                     throws AlgebricksException {
@@ -599,7 +599,7 @@ public class NonTaggedDataFormat implements IDataFormat {
                 }
             }
         });
-        functionTypeInferers.put(AsterixBuiltinFunctions.RECORD_PAIRS, new FunctionTypeInferer() {
+        functionTypeInferers.put(BuiltinFunctions.RECORD_PAIRS, new FunctionTypeInferer() {
             @Override
             public void infer(ILogicalExpression expr, IFunctionDescriptor fd, IVariableTypeEnvironment context)
                     throws AlgebricksException {
@@ -621,22 +621,22 @@ public class NonTaggedDataFormat implements IDataFormat {
 
     @Override
     public IPrinterFactoryProvider getADMPrinterFactoryProvider() {
-        return AqlADMPrinterFactoryProvider.INSTANCE;
+        return ADMPrinterFactoryProvider.INSTANCE;
     }
 
     @Override
     public IPrinterFactoryProvider getLosslessJSONPrinterFactoryProvider() {
-        return AqlLosslessJSONPrinterFactoryProvider.INSTANCE;
+        return LosslessJSONPrinterFactoryProvider.INSTANCE;
     }
 
     @Override
     public IPrinterFactoryProvider getCleanJSONPrinterFactoryProvider() {
-        return AqlCleanJSONPrinterFactoryProvider.INSTANCE;
+        return CleanJSONPrinterFactoryProvider.INSTANCE;
     }
 
     @Override
     public IPrinterFactoryProvider getCSVPrinterFactoryProvider() {
-        return AqlCSVPrinterFactoryProvider.INSTANCE;
+        return CSVPrinterFactoryProvider.INSTANCE;
     }
 
     @SuppressWarnings("unchecked")
@@ -656,7 +656,7 @@ public class NonTaggedDataFormat implements IDataFormat {
         ArrayBackedValueStorage abvs = new ArrayBackedValueStorage();
         DataOutput dos = abvs.getDataOutput();
         try {
-            AqlSerializerDeserializerProvider.INSTANCE.getSerializerDeserializer(obj.getType()).serialize(obj, dos);
+            SerializerDeserializerProvider.INSTANCE.getSerializerDeserializer(obj.getType()).serialize(obj, dos);
         } catch (HyracksDataException e) {
             throw new AlgebricksException(e);
         }
@@ -665,12 +665,12 @@ public class NonTaggedDataFormat implements IDataFormat {
 
     @Override
     public IBinaryIntegerInspectorFactory getBinaryIntegerInspectorFactory() {
-        return AqlBinaryIntegerInspector.FACTORY;
+        return BinaryIntegerInspector.FACTORY;
     }
 
     @Override
     public IMissingWriterFactory getMissingWriterFactory() {
-        return AqlMissingWriterFactory.INSTANCE;
+        return MissingWriterFactory.INSTANCE;
     }
 
     @Override
@@ -715,7 +715,7 @@ public class NonTaggedDataFormat implements IDataFormat {
                     }
                     case FUNCTION_CALL: {
                         AbstractFunctionCallExpression f = (AbstractFunctionCallExpression) expr;
-                        if (f.getFunctionIdentifier().equals(AsterixBuiltinFunctions.TID)) {
+                        if (f.getFunctionIdentifier().equals(BuiltinFunctions.TID)) {
                             return 5;
                         } else {
                             // TODO
@@ -733,16 +733,16 @@ public class NonTaggedDataFormat implements IDataFormat {
 
     @Override
     public INormalizedKeyComputerFactoryProvider getNormalizedKeyComputerFactoryProvider() {
-        return AqlNormalizedKeyComputerFactoryProvider.INSTANCE;
+        return NormalizedKeyComputerFactoryProvider.INSTANCE;
     }
 
     @Override
     public IBinaryHashFunctionFamilyProvider getBinaryHashFunctionFamilyProvider() {
-        return AqlBinaryHashFunctionFamilyProvider.INSTANCE;
+        return BinaryHashFunctionFamilyProvider.INSTANCE;
     }
 
     @Override
     public IPredicateEvaluatorFactoryProvider getPredicateEvaluatorFactoryProvider() {
-        return AqlPredicateEvaluatorFactoryProvider.INSTANCE;
+        return PredicateEvaluatorFactoryProvider.INSTANCE;
     }
 }

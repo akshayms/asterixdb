@@ -21,10 +21,10 @@ package org.apache.asterix.algebra.operators.physical;
 import java.util.ArrayList;
 import java.util.List;
 
-import org.apache.asterix.metadata.declared.AqlMetadataProvider;
-import org.apache.asterix.metadata.declared.AqlSourceId;
+import org.apache.asterix.metadata.declared.DataSourceId;
+import org.apache.asterix.metadata.declared.MetadataProvider;
 import org.apache.asterix.metadata.entities.Dataset;
-import org.apache.asterix.om.functions.AsterixBuiltinFunctions;
+import org.apache.asterix.om.functions.BuiltinFunctions;
 import org.apache.asterix.optimizer.rules.am.RTreeJobGenParams;
 import org.apache.hyracks.algebricks.common.constraints.AlgebricksPartitionConstraint;
 import org.apache.hyracks.algebricks.common.exceptions.AlgebricksException;
@@ -53,7 +53,7 @@ import org.apache.hyracks.api.dataflow.IOperatorDescriptor;
  */
 public class RTreeSearchPOperator extends IndexSearchPOperator {
 
-    public RTreeSearchPOperator(IDataSourceIndex<String, AqlSourceId> idx, INodeDomain domain,
+    public RTreeSearchPOperator(IDataSourceIndex<String, DataSourceId> idx, INodeDomain domain,
             boolean requiresBroadcast) {
         super(idx, domain, requiresBroadcast);
     }
@@ -74,7 +74,7 @@ public class RTreeSearchPOperator extends IndexSearchPOperator {
         }
         AbstractFunctionCallExpression unnestFuncExpr = (AbstractFunctionCallExpression) unnestExpr;
         FunctionIdentifier funcIdent = unnestFuncExpr.getFunctionIdentifier();
-        if (!funcIdent.equals(AsterixBuiltinFunctions.INDEX_SEARCH)) {
+        if (!funcIdent.equals(BuiltinFunctions.INDEX_SEARCH)) {
             return;
         }
         RTreeJobGenParams jobGenParams = new RTreeJobGenParams();
@@ -84,7 +84,7 @@ public class RTreeSearchPOperator extends IndexSearchPOperator {
         int[] minFilterFieldIndexes = getKeyIndexes(unnestMap.getMinFilterVars(), inputSchemas);
         int[] maxFilterFieldIndexes = getKeyIndexes(unnestMap.getMaxFilterVars(), inputSchemas);
 
-        AqlMetadataProvider mp = (AqlMetadataProvider) context.getMetadataProvider();
+        MetadataProvider mp = (MetadataProvider) context.getMetadataProvider();
         Dataset dataset = mp.findDataset(jobGenParams.getDataverseName(), jobGenParams.getDatasetName());
         IVariableTypeEnvironment typeEnv = context.getTypeEnvironment(unnestMap);
         List<LogicalVariable> outputVars = unnestMap.getVariables();

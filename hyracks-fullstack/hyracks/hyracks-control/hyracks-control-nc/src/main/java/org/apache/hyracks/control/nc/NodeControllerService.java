@@ -28,11 +28,9 @@ import java.lang.management.RuntimeMXBean;
 import java.lang.management.ThreadMXBean;
 import java.lang.reflect.Field;
 import java.net.InetSocketAddress;
-import java.util.ArrayList;
 import java.util.Hashtable;
 import java.util.List;
 import java.util.Map;
-import java.util.StringTokenizer;
 import java.util.Timer;
 import java.util.TimerTask;
 import java.util.concurrent.ExecutorService;
@@ -49,6 +47,7 @@ import org.apache.hyracks.api.comm.NetworkAddress;
 import org.apache.hyracks.api.dataset.IDatasetPartitionManager;
 import org.apache.hyracks.api.deployment.DeploymentId;
 import org.apache.hyracks.api.io.IODeviceHandle;
+import org.apache.hyracks.api.job.ActivityClusterGraph;
 import org.apache.hyracks.api.job.JobId;
 import org.apache.hyracks.api.lifecycle.ILifeCycleComponentManager;
 import org.apache.hyracks.api.lifecycle.LifeCycleComponentManager;
@@ -116,6 +115,8 @@ public class NodeControllerService implements IControllerService {
 
     private final Map<JobId, Joblet> jobletMap;
 
+    private final Map<JobId, ActivityClusterGraph> activityClusterGraphMap;
+
     private ExecutorService executor;
 
     private NodeParameters nodeParameters;
@@ -157,7 +158,7 @@ public class NodeControllerService implements IControllerService {
                 new NodeControllerIPCI(this),
                 new CCNCFunctions.SerializerDeserializer());
 
-        ioManager = new IOManager(getDevices(ncConfig.ioDevices));
+        ioManager = new IOManager(IODeviceHandle.getDevices(ncConfig.ioDevices));
         if (id == null) {
             throw new Exception("id not set");
         }
@@ -169,6 +170,7 @@ public class NodeControllerService implements IControllerService {
         lccm = new LifeCycleComponentManager();
         workQueue = new WorkQueue(id, Thread.NORM_PRIORITY); // Reserves MAX_PRIORITY of the heartbeat thread.
         jobletMap = new Hashtable<>();
+        activityClusterGraphMap = new Hashtable<>();
         timer = new Timer(true);
         serverCtx = new ServerContext(ServerContext.ServerType.NODE_CONTROLLER,
                 new File(new File(NodeControllerService.class.getName()), id));
@@ -193,16 +195,6 @@ public class NodeControllerService implements IControllerService {
 
     public ILifeCycleComponentManager getLifeCycleComponentManager() {
         return lccm;
-    }
-
-    private static List<IODeviceHandle> getDevices(String ioDevices) {
-        List<IODeviceHandle> devices = new ArrayList<>();
-        StringTokenizer tok = new StringTokenizer(ioDevices, ",");
-        while (tok.hasMoreElements()) {
-            String devPath = tok.nextToken().trim();
-            devices.add(new IODeviceHandle(new File(devPath), "."));
-        }
-        return devices;
     }
 
     synchronized void setNodeRegistrationResult(NodeParameters parameters, Exception exception) {
@@ -368,6 +360,10 @@ public class NodeControllerService implements IControllerService {
         return jobletMap;
     }
 
+    public Map<JobId, ActivityClusterGraph> getActivityClusterGraphMap() {
+        return activityClusterGraphMap;
+    }
+
     public NetworkManager getNetworkManager() {
         return netManager;
     }
@@ -459,6 +455,7 @@ public class NodeControllerService implements IControllerService {
 
             hbData.diskReads = ioCounter.getReads();
             hbData.diskWrites = ioCounter.getWrites();
+            hbData.numCores = Runtime.getRuntime().availableProcessors();
 
             try {
                 cc.nodeHeartbeat(id, hbData);

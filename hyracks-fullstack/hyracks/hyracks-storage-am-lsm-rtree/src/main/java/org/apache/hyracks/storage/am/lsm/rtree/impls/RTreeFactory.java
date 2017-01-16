@@ -20,9 +20,9 @@
 package org.apache.hyracks.storage.am.lsm.rtree.impls;
 
 import org.apache.hyracks.api.dataflow.value.IBinaryComparatorFactory;
-import org.apache.hyracks.api.exceptions.HyracksDataException;
 import org.apache.hyracks.api.io.FileReference;
-import org.apache.hyracks.storage.am.common.api.IMetadataManagerFactory;
+import org.apache.hyracks.api.io.IIOManager;
+import org.apache.hyracks.storage.am.common.api.IMetadataPageManagerFactory;
 import org.apache.hyracks.storage.am.common.api.ITreeIndexFrameFactory;
 import org.apache.hyracks.storage.am.common.api.IndexException;
 import org.apache.hyracks.storage.am.lsm.common.impls.TreeIndexFactory;
@@ -34,23 +34,19 @@ public class RTreeFactory extends TreeIndexFactory<RTree> {
 
     private final boolean isPointMBR;
 
-    public RTreeFactory(IBufferCache bufferCache, IFileMapProvider fileMapProvider,
-            IMetadataManagerFactory freePageManagerFactory, ITreeIndexFrameFactory interiorFrameFactory,
+    public RTreeFactory(IIOManager ioManager, IBufferCache bufferCache, IFileMapProvider fileMapProvider,
+            IMetadataPageManagerFactory freePageManagerFactory, ITreeIndexFrameFactory interiorFrameFactory,
             ITreeIndexFrameFactory leafFrameFactory, IBinaryComparatorFactory[] cmpFactories, int fieldCount,
             boolean isPointMBR) {
-        super(bufferCache, fileMapProvider, freePageManagerFactory, interiorFrameFactory, leafFrameFactory,
+        super(ioManager, bufferCache, fileMapProvider, freePageManagerFactory, interiorFrameFactory, leafFrameFactory,
                 cmpFactories, fieldCount);
         this.isPointMBR = isPointMBR;
     }
 
     @Override
     public RTree createIndexInstance(FileReference file) throws IndexException {
-        try {
-            return new RTree(bufferCache, fileMapProvider, freePageManagerFactory.createFreePageManager(),
-                    interiorFrameFactory, leafFrameFactory, cmpFactories, fieldCount, file, isPointMBR);
-        } catch (HyracksDataException e) {
-            throw new IndexException(e);
-        }
+        return new RTree(bufferCache, fileMapProvider, freePageManagerFactory.createPageManager(bufferCache),
+                interiorFrameFactory, leafFrameFactory, cmpFactories, fieldCount, file, isPointMBR);
     }
 
 }

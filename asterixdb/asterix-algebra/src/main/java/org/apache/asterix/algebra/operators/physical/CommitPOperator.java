@@ -22,7 +22,7 @@ package org.apache.asterix.algebra.operators.physical;
 import java.util.List;
 
 import org.apache.asterix.common.transactions.JobId;
-import org.apache.asterix.metadata.declared.AqlMetadataProvider;
+import org.apache.asterix.metadata.declared.MetadataProvider;
 import org.apache.hyracks.algebricks.common.exceptions.AlgebricksException;
 import org.apache.hyracks.algebricks.core.algebra.base.IHyracksJobBuilder;
 import org.apache.hyracks.algebricks.core.algebra.base.ILogicalOperator;
@@ -37,7 +37,7 @@ import org.apache.hyracks.algebricks.core.algebra.properties.PhysicalRequirement
 import org.apache.hyracks.algebricks.core.jobgen.impl.JobGenContext;
 import org.apache.hyracks.algebricks.core.jobgen.impl.JobGenHelper;
 import org.apache.hyracks.api.dataflow.value.RecordDescriptor;
-import org.apache.hyracks.dataflow.std.file.FileSplit;
+import org.apache.hyracks.api.io.FileSplit;
 
 public class CommitPOperator extends AbstractPhysicalOperator {
 
@@ -62,7 +62,7 @@ public class CommitPOperator extends AbstractPhysicalOperator {
 
     @Override
     public PhysicalOperatorTag getOperatorTag() {
-        return PhysicalOperatorTag.EXTENSION_OPERATOR;
+        return PhysicalOperatorTag.DELEGATE_OPERATOR;
     }
 
     @Override
@@ -87,7 +87,7 @@ public class CommitPOperator extends AbstractPhysicalOperator {
     public void contributeRuntimeOperator(IHyracksJobBuilder builder, JobGenContext context, ILogicalOperator op,
             IOperatorSchema propagatedSchema, IOperatorSchema[] inputSchemas, IOperatorSchema outerPlanSchema)
                     throws AlgebricksException {
-        AqlMetadataProvider metadataProvider = (AqlMetadataProvider) context.getMetadataProvider();
+        MetadataProvider metadataProvider = (MetadataProvider) context.getMetadataProvider();
         RecordDescriptor recDesc = JobGenHelper.mkRecordDescriptor(context.getTypeEnvironment(op), propagatedSchema,
                 context);
         int[] primaryKeyFields = JobGenHelper.variablesToFieldIndexes(primaryKeyLogicalVars, inputSchemas[0]);
@@ -97,7 +97,7 @@ public class CommitPOperator extends AbstractPhysicalOperator {
                 dataverse, dataset, dataset, metadataProvider.isTemporaryDatasetWriteJob());
         int[] datasetPartitions = new int[splitsForDataset.length];
         for (int i = 0; i < splitsForDataset.length; i++) {
-            datasetPartitions[i] = splitsForDataset[i].getPartition();
+            datasetPartitions[i] = i;
         }
 
         int upsertVarIdx = -1;

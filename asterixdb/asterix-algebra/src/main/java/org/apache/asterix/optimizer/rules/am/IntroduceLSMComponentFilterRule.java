@@ -19,18 +19,19 @@
 package org.apache.asterix.optimizer.rules.am;
 
 import java.util.ArrayList;
+import java.util.LinkedList;
 import java.util.List;
+import java.util.Queue;
 
 import org.apache.asterix.common.config.DatasetConfig.DatasetType;
-import org.apache.asterix.metadata.declared.AqlDataSource;
-import org.apache.asterix.metadata.declared.AqlDataSource.AqlDataSourceType;
-import org.apache.asterix.metadata.declared.AqlMetadataProvider;
+import org.apache.asterix.metadata.declared.DataSource;
 import org.apache.asterix.metadata.declared.DatasetDataSource;
+import org.apache.asterix.metadata.declared.MetadataProvider;
 import org.apache.asterix.metadata.entities.Dataset;
 import org.apache.asterix.metadata.entities.Index;
 import org.apache.asterix.metadata.utils.DatasetUtils;
 import org.apache.asterix.metadata.utils.KeyFieldTypeUtils;
-import org.apache.asterix.om.functions.AsterixBuiltinFunctions;
+import org.apache.asterix.om.functions.BuiltinFunctions;
 import org.apache.asterix.om.types.ARecordType;
 import org.apache.asterix.om.types.ATypeTag;
 import org.apache.asterix.om.types.IAType;
@@ -91,7 +92,7 @@ public class IntroduceLSMComponentFilterRule implements IAlgebraicRewriteRule {
         ARecordType recType = null;
         if (dataset != null && dataset.getDatasetType() == DatasetType.INTERNAL) {
             filterFieldName = DatasetUtils.getFilterField(dataset);
-            IAType itemType = ((AqlMetadataProvider) context.getMetadataProvider())
+            IAType itemType = ((MetadataProvider) context.getMetadataProvider())
                     .findType(dataset.getItemTypeDataverseName(), dataset.getItemTypeName());
             if (itemType.getTypeTag() == ATypeTag.RECORD) {
                 recType = (ARecordType) itemType;
@@ -100,7 +101,7 @@ public class IntroduceLSMComponentFilterRule implements IAlgebraicRewriteRule {
         if (filterFieldName == null || recType == null) {
             return false;
         }
-        List<Index> datasetIndexes = ((AqlMetadataProvider) context.getMetadataProvider())
+        List<Index> datasetIndexes = ((MetadataProvider) context.getMetadataProvider())
                 .getDatasetIndexes(dataset.getDataverseName(), dataset.getDatasetName());
 
         List<IOptimizableFuncExpr> optFuncExprs = new ArrayList<>();
@@ -130,7 +131,7 @@ public class IntroduceLSMComponentFilterRule implements IAlgebraicRewriteRule {
         for (IOptimizableFuncExpr optFuncExpr : optFuncExprs) {
             ComparisonKind ck = AlgebricksBuiltinFunctions
                     .getComparisonType(optFuncExpr.getFuncExpr().getFunctionIdentifier());
-            ILogicalExpression searchKeyExpr = optFuncExpr.getConstantAtRuntimeExpr(0);
+            ILogicalExpression searchKeyExpr = optFuncExpr.getConstantExpr(0);
             LogicalVariable var = context.newVar();
             assignKeyExprList.add(new MutableObject<ILogicalExpression>(searchKeyExpr));
             assignKeyVarList.add(var);
@@ -149,11 +150,15 @@ public class IntroduceLSMComponentFilterRule implements IAlgebraicRewriteRule {
     private void changePlan(List<IOptimizableFuncExpr> optFuncExprs, AbstractLogicalOperator op, Dataset dataset,
             IOptimizationContext context) throws AlgebricksException {
 
-        AbstractLogicalOperator descendantOp = (AbstractLogicalOperator) op.getInputs().get(0).getValue();
-        while (descendantOp != null) {
+        Queue<Mutable<ILogicalOperator>> queue = new LinkedList<>(op.getInputs());
+        while (!queue.isEmpty()) {
+            AbstractLogicalOperator descendantOp = (AbstractLogicalOperator) queue.poll().getValue();
+            if (descendantOp == null) {
+                continue;
+            }
             if (descendantOp.getOperatorTag() == LogicalOperatorTag.DATASOURCESCAN) {
                 DataSourceScanOperator dataSourceScanOp = (DataSourceScanOperator) descendantOp;
-                AqlDataSource ds = (AqlDataSource) dataSourceScanOp.getDataSource();
+                DataSource ds = (DataSource) dataSourceScanOp.getDataSource();
                 if (dataset.getDatasetName().compareTo(((DatasetDataSource) ds).getDataset().getDatasetName()) == 0) {
                     List<LogicalVariable> minFilterVars = new ArrayList<>();
                     List<LogicalVariable> maxFilterVars = new ArrayList<>();
@@ -181,7 +186,7 @@ public class IntroduceLSMComponentFilterRule implements IAlgebraicRewriteRule {
                 if (unnestExpr.getExpressionTag() == LogicalExpressionTag.FUNCTION_CALL) {
                     AbstractFunctionCallExpression f = (AbstractFunctionCallExpression) unnestExpr;
                     FunctionIdentifier fid = f.getFunctionIdentifier();
-                    if (!fid.equals(AsterixBuiltinFunctions.INDEX_SEARCH)) {
+                    if (!fid.equals(BuiltinFunctions.INDEX_SEARCH)) {
                         throw new IllegalStateException();
                     }
                     AccessMethodJobGenParams jobGenParams = new AccessMethodJobGenParams();
@@ -208,10 +213,7 @@ public class IntroduceLSMComponentFilterRule implements IAlgebraicRewriteRule {
                     }
                 }
             }
-            if (descendantOp.getInputs().isEmpty()) {
-                break;
-            }
-            descendantOp = (AbstractLogicalOperator) descendantOp.getInputs().get(0).getValue();
+            queue.addAll(descendantOp.getInputs());
         }
     }
 
@@ -220,8 +222,8 @@ public class IntroduceLSMComponentFilterRule implements IAlgebraicRewriteRule {
         while (descendantOp != null) {
             if (descendantOp.getOperatorTag() == LogicalOperatorTag.DATASOURCESCAN) {
                 DataSourceScanOperator dataSourceScanOp = (DataSourceScanOperator) descendantOp;
-                AqlDataSource ds = (AqlDataSource) dataSourceScanOp.getDataSource();
-                if (ds.getDatasourceType() != AqlDataSourceType.INTERNAL_DATASET) {
+                DataSource ds = (DataSource) dataSourceScanOp.getDataSource();
+                if (ds.getDatasourceType() != DataSource.Type.INTERNAL_DATASET) {
                     return null;
                 }
                 return ((DatasetDataSource) ds).getDataset();
@@ -233,10 +235,10 @@ public class IntroduceLSMComponentFilterRule implements IAlgebraicRewriteRule {
                     FunctionIdentifier fid = f.getFunctionIdentifier();
                     String dataverseName;
                     String datasetName;
-                    if (AsterixBuiltinFunctions.EXTERNAL_LOOKUP.equals(fid)) {
+                    if (BuiltinFunctions.EXTERNAL_LOOKUP.equals(fid)) {
                         dataverseName = AccessMethodUtils.getStringConstant(f.getArguments().get(0));
                         datasetName = AccessMethodUtils.getStringConstant(f.getArguments().get(1));
-                    } else if (fid.equals(AsterixBuiltinFunctions.INDEX_SEARCH)) {
+                    } else if (fid.equals(BuiltinFunctions.INDEX_SEARCH)) {
                         AccessMethodJobGenParams jobGenParams = new AccessMethodJobGenParams();
                         jobGenParams.readFromFuncArgs(f.getArguments());
                         dataverseName = jobGenParams.dataverseName;
@@ -244,7 +246,7 @@ public class IntroduceLSMComponentFilterRule implements IAlgebraicRewriteRule {
                     } else {
                         throw new AlgebricksException("Unexpected function for Unnest Map: " + fid);
                     }
-                    return ((AqlMetadataProvider) context.getMetadataProvider()).findDataset(dataverseName,
+                    return ((MetadataProvider) context.getMetadataProvider()).findDataset(dataverseName,
                             datasetName);
                 }
             }
@@ -356,7 +358,7 @@ public class IntroduceLSMComponentFilterRule implements IAlgebraicRewriteRule {
                     if (unnestExpr.getExpressionTag() == LogicalExpressionTag.FUNCTION_CALL) {
                         AbstractFunctionCallExpression f = (AbstractFunctionCallExpression) unnestExpr;
                         FunctionIdentifier fid = f.getFunctionIdentifier();
-                        if (!fid.equals(AsterixBuiltinFunctions.INDEX_SEARCH)) {
+                        if (!fid.equals(BuiltinFunctions.INDEX_SEARCH)) {
                             throw new IllegalStateException();
                         }
                         AccessMethodJobGenParams jobGenParams = new AccessMethodJobGenParams();
@@ -370,7 +372,7 @@ public class IntroduceLSMComponentFilterRule implements IAlgebraicRewriteRule {
                         }
                     }
 
-                    IAType metaItemType = ((AqlMetadataProvider) context.getMetadataProvider())
+                    IAType metaItemType = ((MetadataProvider) context.getMetadataProvider())
                             .findType(dataset.getMetaItemTypeDataverseName(), dataset.getMetaItemTypeName());
                     ARecordType metaRecType = (ARecordType) metaItemType;
                     int numSecondaryKeys = KeyFieldTypeUtils.getNumSecondaryKeys(index, recType, metaRecType);
@@ -408,8 +410,8 @@ public class IntroduceLSMComponentFilterRule implements IAlgebraicRewriteRule {
         }
         AbstractFunctionCallExpression funcExpr = (AbstractFunctionCallExpression) expr;
         FunctionIdentifier funcIdent = funcExpr.getFunctionIdentifier();
-        if (funcIdent == AsterixBuiltinFunctions.FIELD_ACCESS_BY_NAME
-                || funcIdent == AsterixBuiltinFunctions.FIELD_ACCESS_BY_INDEX) {
+        if (funcIdent == BuiltinFunctions.FIELD_ACCESS_BY_NAME
+                || funcIdent == BuiltinFunctions.FIELD_ACCESS_BY_INDEX) {
 
             //get the variable from here. Figure out which input it came from. Go to that input!!!
             ArrayList<LogicalVariable> usedVars = new ArrayList<>();
@@ -440,14 +442,14 @@ public class IntroduceLSMComponentFilterRule implements IAlgebraicRewriteRule {
                 }
             }
 
-            if (funcIdent == AsterixBuiltinFunctions.FIELD_ACCESS_BY_NAME) {
+            if (funcIdent == BuiltinFunctions.FIELD_ACCESS_BY_NAME) {
                 String fieldName = ConstantExpressionUtil.getStringArgument(funcExpr, 1);
                 if (fieldName == null) {
                     return null;
                 }
                 returnList.add(fieldName);
                 return new Pair<>(recType, returnList);
-            } else if (funcIdent == AsterixBuiltinFunctions.FIELD_ACCESS_BY_INDEX) {
+            } else if (funcIdent == BuiltinFunctions.FIELD_ACCESS_BY_INDEX) {
                 Integer fieldIndex = ConstantExpressionUtil.getIntArgument(funcExpr, 1);
                 if (fieldIndex == null) {
                     return null;

@@ -25,14 +25,7 @@
   <includeBaseDirectory>false</includeBaseDirectory>
   <fileSets>
     <fileSet>
-      <directory>target/classes/META-INF</directory>
-      <outputDirectory>.</outputDirectory>
-      <includes>
-        <include>DISCLAIMER*</include>
-      </includes>
-    </fileSet>
-    <fileSet>
-      <directory>src/main/licenses</directory>
+      <directory>target/generated-sources</directory>
       <outputDirectory>.</outputDirectory>
       <includes>
         <include>LICENSE*</include>
@@ -83,6 +76,7 @@
   <dependencySets>
     <dependencySet>
       <includes>
+        <!-- NOTE! Any changes here must be mirrored in src/main/assembly/binary-assembly.xml -->
         <include>org.apache.asterix:asterix-yarn</include>
         <include>org.apache.asterix:asterix-common</include>
         <include>log4j:log4j</include>

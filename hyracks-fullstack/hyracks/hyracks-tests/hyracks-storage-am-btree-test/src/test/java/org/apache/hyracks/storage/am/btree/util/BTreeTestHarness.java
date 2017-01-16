@@ -19,7 +19,6 @@
 
 package org.apache.hyracks.storage.am.btree.util;
 
-import java.io.File;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.Random;
@@ -28,6 +27,9 @@ import org.apache.hyracks.api.context.IHyracksTaskContext;
 import org.apache.hyracks.api.exceptions.HyracksDataException;
 import org.apache.hyracks.api.io.FileReference;
 import org.apache.hyracks.storage.am.btree.frames.BTreeLeafFrameType;
+import org.apache.hyracks.storage.am.common.api.IMetadataPageManagerFactory;
+import org.apache.hyracks.storage.am.common.api.IPageManagerFactory;
+import org.apache.hyracks.storage.am.common.freepage.LinkedMetadataPageManagerFactory;
 import org.apache.hyracks.storage.am.config.AccessMethodTestsConfig;
 import org.apache.hyracks.storage.common.buffercache.IBufferCache;
 import org.apache.hyracks.storage.common.file.IFileMapProvider;
@@ -49,12 +51,12 @@ public class BTreeTestHarness {
     protected IBufferCache bufferCache;
     protected IFileMapProvider fileMapProvider;
     protected FileReference file;
+    protected IMetadataPageManagerFactory pageManagerFactory;
 
     protected final Random rnd = new Random();
     protected final SimpleDateFormat simpleDateFormat = new SimpleDateFormat("ddMMyy-hhmmssSS");
     protected final String tmpDir = System.getProperty("java.io.tmpdir");
     protected final String sep = System.getProperty("file.separator");
-    protected String fileName;
 
     public BTreeTestHarness() {
         this.pageSize = AccessMethodTestsConfig.BTREE_PAGE_SIZE;
@@ -71,12 +73,12 @@ public class BTreeTestHarness {
     }
 
     public void setUp() throws HyracksDataException {
-        fileName = tmpDir + sep + simpleDateFormat.format(new Date());
         ctx = TestUtils.create(getHyracksFrameSize());
         TestStorageManagerComponentHolder.init(pageSize, numPages, maxOpenFiles);
         bufferCache = TestStorageManagerComponentHolder.getBufferCache(ctx);
         fileMapProvider = TestStorageManagerComponentHolder.getFileMapProvider(ctx);
-        file = new FileReference(new File(fileName));
+        file = ctx.getIOManager().getFileReference(0, simpleDateFormat.format(new Date()));
+        pageManagerFactory = new LinkedMetadataPageManagerFactory();
         rnd.setSeed(RANDOM_SEED);
     }
 
@@ -101,10 +103,6 @@ public class BTreeTestHarness {
         return file;
     }
 
-    public String getFileName() {
-        return fileName;
-    }
-
     public Random getRandom() {
         return rnd;
     }
@@ -123,5 +121,9 @@ public class BTreeTestHarness {
 
     public int getMaxOpenFiles() {
         return maxOpenFiles;
+    }
+
+    public IPageManagerFactory getPageManagerFactory() {
+        return pageManagerFactory;
     }
 }

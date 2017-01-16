@@ -37,9 +37,11 @@ import org.apache.hyracks.algebricks.core.algebra.expressions.ConstantExpression
 import org.apache.hyracks.algebricks.core.algebra.functions.AlgebricksBuiltinFunctions;
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.AbstractLogicalOperator;
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.AbstractOperatorWithNestedPlans;
+import org.apache.hyracks.algebricks.core.algebra.operators.logical.AssignOperator;
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.SelectOperator;
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.visitors.CardinalityInferenceVisitor;
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.visitors.VariableUtilities;
+import org.apache.hyracks.algebricks.core.algebra.properties.StructuralPropertiesVector;
 
 public class OperatorPropertiesUtil {
 
@@ -287,11 +289,35 @@ public class OperatorPropertiesUtil {
     public static boolean isMovable(ILogicalOperator op) {
         Object annotation = op.getAnnotations().get(MOVABLE);
         if (annotation == null) {
-            // By default, it is movable.
+            // Can't move nonPures!
+            if (op.getOperatorTag() == LogicalOperatorTag.ASSIGN) {
+                AssignOperator assign = (AssignOperator) op;
+                for (Mutable<ILogicalExpression> expr : assign.getExpressions()) {
+                    if (containsNonpureCall(expr.getValue())) {
+                        return false;
+                    }
+                }
+            }
             return true;
         }
         Boolean movable = (Boolean) annotation;
         return movable;
+    }
+
+    private static boolean containsNonpureCall(ILogicalExpression expr) {
+        if (expr.getExpressionTag() == LogicalExpressionTag.FUNCTION_CALL) {
+            AbstractFunctionCallExpression fExpr = (AbstractFunctionCallExpression) expr;
+            if (!fExpr.getFunctionInfo().isFunctional()) {
+                return true;
+            }
+            for (Mutable<ILogicalExpression> subExpr : fExpr.getArguments()) {
+                if (containsNonpureCall(subExpr.getValue())) {
+                    return true;
+                }
+            }
+
+        }
+        return false;
     }
 
     /**
@@ -304,5 +330,24 @@ public class OperatorPropertiesUtil {
      */
     public static void markMovable(ILogicalOperator op, boolean movable) {
         op.getAnnotations().put(MOVABLE, movable);
+    }
+
+    /**
+     * Checks whether a binary input operator in consideration needs to
+     * run in a single partition mode. If it does, returns an empty properties vector.
+     * Otherwise, returns the proposed partitioned properties vector.
+     *
+     * @param op,                          the binary input operator in consideration.
+     * @param partitionedPropertiesVector, the proposed partitioned properties vector.
+     * @return either an empty properties vector or the proposed partitioned properties vector.
+     */
+    public static StructuralPropertiesVector checkUnpartitionedAndGetPropertiesVector(ILogicalOperator op,
+            StructuralPropertiesVector partitionedPropertiesVector) {
+        ILogicalOperator leftChild = op.getInputs().get(0).getValue();
+        ILogicalOperator rightChild = op.getInputs().get(1).getValue();
+        boolean unPartitioned =
+                leftChild.getExecutionMode().equals(AbstractLogicalOperator.ExecutionMode.UNPARTITIONED) && rightChild
+                        .getExecutionMode().equals(AbstractLogicalOperator.ExecutionMode.UNPARTITIONED);
+        return unPartitioned ? StructuralPropertiesVector.EMPTY_PROPERTIES_VECTOR : partitionedPropertiesVector;
     }
 }

@@ -28,7 +28,7 @@ import org.apache.asterix.common.exceptions.ErrorCode;
 import org.apache.asterix.common.exceptions.RuntimeDataException;
 import org.apache.asterix.dataflow.data.nontagged.comparators.ListItemBinaryComparatorFactory;
 import org.apache.asterix.dataflow.data.nontagged.hash.ListItemBinaryHashFunctionFactory;
-import org.apache.asterix.om.functions.AsterixBuiltinFunctions;
+import org.apache.asterix.om.functions.BuiltinFunctions;
 import org.apache.asterix.om.functions.IFunctionDescriptor;
 import org.apache.asterix.om.functions.IFunctionDescriptorFactory;
 import org.apache.asterix.om.pointables.AListVisitablePointable;
@@ -57,6 +57,7 @@ import org.apache.hyracks.api.exceptions.HyracksDataException;
 import org.apache.hyracks.data.std.api.IPointable;
 import org.apache.hyracks.data.std.primitive.VoidPointable;
 import org.apache.hyracks.data.std.util.ArrayBackedValueStorage;
+import org.apache.hyracks.data.std.util.BinaryEntry;
 import org.apache.hyracks.dataflow.common.data.accessors.IFrameTupleReference;
 
 public class RecordAddFieldsDescriptor extends AbstractScalarFunctionDynamicDescriptor {
@@ -120,8 +121,8 @@ public class RecordAddFieldsDescriptor extends AbstractScalarFunctionDynamicDesc
                             .createBinaryHashFunction();
                     private final IBinaryHashFunction getHashFunc = ListItemBinaryHashFunctionFactory.INSTANCE
                             .createBinaryHashFunction();
-                    private final BinaryHashMap.BinaryEntry keyEntry = new BinaryHashMap.BinaryEntry();
-                    private final BinaryHashMap.BinaryEntry valEntry = new BinaryHashMap.BinaryEntry();
+                    private final BinaryEntry keyEntry = new BinaryEntry();
+                    private final BinaryEntry valEntry = new BinaryEntry();
                     private final IVisitablePointable tempValReference = allocator.allocateEmpty();
                     private final IBinaryComparator cmp = ListItemBinaryComparatorFactory.INSTANCE
                             .createBinaryComparator();
@@ -234,12 +235,12 @@ public class RecordAddFieldsDescriptor extends AbstractScalarFunctionDynamicDesc
                                 keyEntry.set(namePointable.getByteArray(), namePointable.getStartOffset(),
                                         namePointable.getLength());
                                 // Check if already in our built record
-                                BinaryHashMap.BinaryEntry entry = hashMap.get(keyEntry);
+                                BinaryEntry entry = hashMap.get(keyEntry);
                                 if (entry != null) {
-                                    tempValReference.set(entry.buf, entry.off, entry.len);
+                                    tempValReference.set(entry.getBuf(), entry.getOffset(), entry.getLength());
                                     // If value is not equal throw conflicting duplicate field, otherwise ignore
                                     if (!PointableHelper.byteArrayEqual(valuePointable, tempValReference)) {
-                                        throw new RuntimeDataException(ErrorCode.ERROR_DUPLICATE_FIELD,
+                                        throw new RuntimeDataException(ErrorCode.DUPLICATE_FIELD_NAME,
                                                 getIdentifier());
                                     }
                                 } else {
@@ -264,6 +265,6 @@ public class RecordAddFieldsDescriptor extends AbstractScalarFunctionDynamicDesc
 
     @Override
     public FunctionIdentifier getIdentifier() {
-        return AsterixBuiltinFunctions.ADD_FIELDS;
+        return BuiltinFunctions.ADD_FIELDS;
     }
 }

@@ -27,6 +27,7 @@ import org.apache.hyracks.api.dataflow.value.ITypeTraits;
 import org.apache.hyracks.api.exceptions.HyracksDataException;
 import org.apache.hyracks.api.io.FileReference;
 import org.apache.hyracks.storage.am.common.api.IIndex;
+import org.apache.hyracks.storage.am.common.api.IMetadataPageManagerFactory;
 import org.apache.hyracks.storage.am.common.api.IPrimitiveValueProviderFactory;
 import org.apache.hyracks.storage.am.common.api.ITreeIndex;
 import org.apache.hyracks.storage.am.common.api.TreeIndexException;
@@ -52,7 +53,7 @@ public class ExternalRTreeDataflowHelper extends LSMRTreeDataflowHelper {
             ILSMMergePolicy mergePolicy, ILSMOperationTrackerProvider opTrackerFactory,
             ILSMIOOperationScheduler ioScheduler, ILSMIOOperationCallbackFactory ioOpCallbackFactory,
             ILinearizeComparatorFactory linearizeCmpFactory, int[] btreeFields, int version, boolean durable,
-            boolean isPointMBR) {
+            boolean isPointMBR) throws HyracksDataException {
         super(opDesc, ctx, partition, null, btreeComparatorFactories, valueProviderFactories, rtreePolicyType,
                 mergePolicy, opTrackerFactory, ioScheduler, ioOpCallbackFactory, linearizeCmpFactory, null, btreeFields,
                 null, null, null, durable, isPointMBR);
@@ -65,7 +66,7 @@ public class ExternalRTreeDataflowHelper extends LSMRTreeDataflowHelper {
             ILSMMergePolicy mergePolicy, ILSMOperationTrackerProvider opTrackerFactory,
             ILSMIOOperationScheduler ioScheduler, ILSMIOOperationCallbackFactory ioOpCallbackFactory,
             ILinearizeComparatorFactory linearizeCmpFactory, int[] btreeFields, int version, boolean durable,
-            boolean isPointMBR) {
+            boolean isPointMBR) throws HyracksDataException {
         super(opDesc, ctx, partition, null, bloomFilterFalsePositiveRate, btreeComparatorFactories,
                 valueProviderFactories, rtreePolicyType, mergePolicy, opTrackerFactory, ioScheduler,
                 ioOpCallbackFactory, linearizeCmpFactory, null, btreeFields, null, null, null, durable, isPointMBR);
@@ -77,7 +78,7 @@ public class ExternalRTreeDataflowHelper extends LSMRTreeDataflowHelper {
         synchronized (lcManager) {
             if (index == null) {
                 try {
-                    index = lcManager.get(resourcePath);
+                    index = lcManager.get(resourceName);
                 } catch (HyracksDataException e) {
                     return null;
                 }
@@ -95,11 +96,12 @@ public class ExternalRTreeDataflowHelper extends LSMRTreeDataflowHelper {
             ITypeTraits[] filterTypeTraits, IBinaryComparatorFactory[] filterCmpFactories, int[] filterFields)
             throws HyracksDataException {
         try {
-            return LSMRTreeUtils.createExternalRTree(file, diskBufferCache, diskFileMapProvider, typeTraits,
+            return LSMRTreeUtils.createExternalRTree(ctx.getIOManager(), file, diskBufferCache, diskFileMapProvider,
+                    typeTraits,
                     rtreeCmpFactories, btreeCmpFactories, valueProviderFactories, rtreePolicyType,
                     bloomFilterFalsePositiveRate, mergePolicy, opTracker, ioScheduler,
                     ioOpCallbackFactory.createIOOperationCallback(), linearizeCmpFactory, btreeFields, version, durable,
-                    isPointMBR);
+                    isPointMBR, (IMetadataPageManagerFactory) opDesc.getPageManagerFactory());
         } catch (TreeIndexException e) {
             throw new HyracksDataException(e);
         }

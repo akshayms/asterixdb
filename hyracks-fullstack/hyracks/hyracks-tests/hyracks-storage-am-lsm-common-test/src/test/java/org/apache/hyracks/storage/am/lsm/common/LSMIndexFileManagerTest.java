@@ -33,12 +33,7 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.concurrent.Executors;
 
-import org.junit.After;
-import org.junit.Before;
-import org.junit.Test;
-
 import org.apache.hyracks.api.exceptions.HyracksDataException;
-import org.apache.hyracks.api.exceptions.HyracksException;
 import org.apache.hyracks.api.io.FileReference;
 import org.apache.hyracks.api.io.IODeviceHandle;
 import org.apache.hyracks.control.nc.io.IOManager;
@@ -47,6 +42,9 @@ import org.apache.hyracks.storage.am.lsm.common.api.ILSMIndexFileManager;
 import org.apache.hyracks.storage.am.lsm.common.impls.LSMComponentFileReferences;
 import org.apache.hyracks.storage.common.file.IFileMapProvider;
 import org.apache.hyracks.test.support.TestStorageManagerComponentHolder;
+import org.junit.After;
+import org.junit.Before;
+import org.junit.Test;
 
 public class LSMIndexFileManagerTest {
     private static final int DEFAULT_PAGE_SIZE = 256;
@@ -61,15 +59,15 @@ public class LSMIndexFileManagerTest {
     protected FileReference file;
 
     @Before
-    public void setUp() throws HyracksException {
+    public void setUp() throws HyracksDataException {
         TestStorageManagerComponentHolder.init(DEFAULT_PAGE_SIZE, DEFAULT_NUM_PAGES, DEFAULT_MAX_OPEN_FILES);
         ioManager = TestStorageManagerComponentHolder.getIOManager();
         fileMapProvider = TestStorageManagerComponentHolder.getFileMapProvider(null);
-        baseDir = ioManager.getIODevices().get(DEFAULT_IO_DEVICE_ID).getPath() + sep + "lsm_tree"
+        baseDir = ioManager.getIODevices().get(DEFAULT_IO_DEVICE_ID).getMount() + sep + "lsm_tree"
                 + simpleDateFormat.format(new Date()) + sep;
         File f = new File(baseDir);
         f.mkdirs();
-        file = new FileReference(f);
+        file = ioManager.resolveAbsolutePath(f.getAbsolutePath());
     }
 
     @After
@@ -79,20 +77,21 @@ public class LSMIndexFileManagerTest {
     }
 
     public void sortOrderTest(boolean testFlushFileName) throws InterruptedException, HyracksDataException {
-        ILSMIndexFileManager fileManager = new DummyLSMIndexFileManager(fileMapProvider, file, new DummyTreeFactory());
-        LinkedList<String> fileNames = new LinkedList<String>();
+        ILSMIndexFileManager fileManager = new DummyLSMIndexFileManager(ioManager, fileMapProvider, file,
+                new DummyTreeFactory());
+        LinkedList<String> fileNames = new LinkedList<>();
 
         int numFileNames = 100;
         long sleepTime = 5;
         for (int i = 0; i < numFileNames; i++) {
-            String flushFileName = (String) fileManager.getRelFlushFileReference().getInsertIndexFileReference()
+            String flushFileName = fileManager.getRelFlushFileReference().getInsertIndexFileReference()
                     .getFile().getName();
             if (testFlushFileName) {
                 fileNames.addFirst(flushFileName);
             }
             Thread.sleep(sleepTime);
             if (!testFlushFileName) {
-                String secondFlushFileName = (String) fileManager.getRelFlushFileReference()
+                String secondFlushFileName = fileManager.getRelFlushFileReference()
                         .getInsertIndexFileReference().getFile().getName();
                 String mergeFileName = getMergeFileName(fileManager, flushFileName, secondFlushFileName);
                 fileNames.addFirst(mergeFileName);
@@ -100,7 +99,7 @@ public class LSMIndexFileManagerTest {
             }
         }
 
-        List<String> sortedFileNames = new ArrayList<String>();
+        List<String> sortedFileNames = new ArrayList<>();
         sortedFileNames.addAll(fileNames);
 
         // Make sure the comparator sorts in the correct order (i.e., the
@@ -119,11 +118,17 @@ public class LSMIndexFileManagerTest {
     }
 
     public void cleanInvalidFilesTest(IOManager ioManager) throws InterruptedException, IOException, IndexException {
-        ILSMIndexFileManager fileManager = new DummyLSMIndexFileManager(fileMapProvider, file, new DummyTreeFactory());
+        String dirPath = ioManager.getIODevices().get(DEFAULT_IO_DEVICE_ID).getMount() + sep + "lsm_tree"
+                + simpleDateFormat.format(new Date()) + sep;
+        File f = new File(dirPath);
+        f.mkdirs();
+        FileReference file = ioManager.resolveAbsolutePath(f.getAbsolutePath());
+        ILSMIndexFileManager fileManager = new DummyLSMIndexFileManager(ioManager, fileMapProvider, file,
+                new DummyTreeFactory());
         fileManager.createDirs();
 
-        List<FileReference> flushFiles = new ArrayList<FileReference>();
-        List<FileReference> allFiles = new ArrayList<FileReference>();
+        List<FileReference> flushFiles = new ArrayList<>();
+        List<FileReference> allFiles = new ArrayList<>();
 
         int numFileNames = 100;
         long sleepTime = 5;
@@ -165,7 +170,7 @@ public class LSMIndexFileManagerTest {
         }
 
         // Populate expected valid flush files.
-        List<String> expectedValidFiles = new ArrayList<String>();
+        List<String> expectedValidFiles = new ArrayList<>();
         for (int i = 30; i < 50; i++) {
             expectedValidFiles.add(flushFiles.get(i).getFile().getName());
         }
@@ -192,17 +197,18 @@ public class LSMIndexFileManagerTest {
         }
 
         // Make sure invalid files were removed from the IODevices.
-        ArrayList<String> remainingFiles = new ArrayList<String>();
-        File dir = new File(baseDir);
+        ArrayList<String> remainingFiles = new ArrayList<>();
+        File dir = new File(dirPath);
         FilenameFilter filter = new FilenameFilter() {
+            @Override
             public boolean accept(File dir, String name) {
                 return !name.startsWith(".");
             }
         };
         String[] files = dir.list(filter);
-        for (String file : files) {
-            File f = new File(file);
-            remainingFiles.add(f.getName());
+        for (String aFilePath : files) {
+            File aFile = new File(aFilePath);
+            remainingFiles.add(aFile.getName());
         }
 
         Collections.sort(remainingFiles, fileManager.getFileNameComparator());
@@ -223,6 +229,7 @@ public class LSMIndexFileManagerTest {
     private void cleanDirs(IOManager ioManager) {
         File dir = new File(baseDir);
         FilenameFilter filter = new FilenameFilter() {
+            @Override
             public boolean accept(File dir, String name) {
                 return !name.startsWith(".");
             }
@@ -235,8 +242,8 @@ public class LSMIndexFileManagerTest {
 
     }
 
-    private IOManager createIOManager(int numDevices) throws HyracksException {
-        List<IODeviceHandle> devices = new ArrayList<IODeviceHandle>();
+    private IOManager createIOManager(int numDevices) throws HyracksDataException {
+        List<IODeviceHandle> devices = new ArrayList<>();
         for (int i = 0; i < numDevices; i++) {
             String iodevPath = System.getProperty("java.io.tmpdir") + sep + "test_iodev" + i;
             devices.add(new IODeviceHandle(new File(iodevPath), "wa"));
@@ -255,7 +262,7 @@ public class LSMIndexFileManagerTest {
             throws HyracksDataException {
         File f1 = new File(firstFile);
         File f2 = new File(lastFile);
-        return (String) fileNameManager.getRelMergeFileReference(f1.getName(), f2.getName())
+        return fileNameManager.getRelMergeFileReference(f1.getName(), f2.getName())
                 .getInsertIndexFileReference().getFile().getName();
     }
 }

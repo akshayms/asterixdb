@@ -21,8 +21,5 @@ package org.apache.hyracks.tests.am.common;
 
 public interface ITreeIndexOperatorTestHelper {
     public String getPrimaryIndexName();
-
     public String getSecondaryIndexName();
-
-    public void cleanup(String primaryFileName, String secondaryFileName);
 }

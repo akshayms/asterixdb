@@ -28,12 +28,12 @@ import org.apache.asterix.dataflow.data.nontagged.serde.ADayTimeDurationSerializ
 import org.apache.asterix.dataflow.data.nontagged.serde.AIntervalSerializerDeserializer;
 import org.apache.asterix.dataflow.data.nontagged.serde.ATimeSerializerDeserializer;
 import org.apache.asterix.dataflow.data.nontagged.serde.AYearMonthDurationSerializerDeserializer;
-import org.apache.asterix.formats.nontagged.AqlSerializerDeserializerProvider;
+import org.apache.asterix.formats.nontagged.SerializerDeserializerProvider;
 import org.apache.asterix.om.base.AInterval;
 import org.apache.asterix.om.base.AMutableInterval;
 import org.apache.asterix.om.base.temporal.DurationArithmeticOperations;
 import org.apache.asterix.om.base.temporal.GregorianCalendarSystem;
-import org.apache.asterix.om.functions.AsterixBuiltinFunctions;
+import org.apache.asterix.om.functions.BuiltinFunctions;
 import org.apache.asterix.om.functions.IFunctionDescriptor;
 import org.apache.asterix.om.functions.IFunctionDescriptorFactory;
 import org.apache.asterix.om.types.AOrderedListType;
@@ -96,8 +96,8 @@ public class OverlapBinsDescriptor extends AbstractScalarFunctionDynamicDescript
 
                     private final AMutableInterval aInterval = new AMutableInterval(0, 0, (byte) -1);
                     @SuppressWarnings("unchecked")
-                    private final ISerializerDeserializer<AInterval> intervalSerde = AqlSerializerDeserializerProvider.INSTANCE
-                            .getSerializerDeserializer(BuiltinType.AINTERVAL);
+                    private final ISerializerDeserializer<AInterval> intervalSerde =
+                            SerializerDeserializerProvider.INSTANCE.getSerializerDeserializer(BuiltinType.AINTERVAL);
 
                     private final GregorianCalendarSystem gregCalSys = GregorianCalendarSystem.getInstance();
 
@@ -309,7 +309,7 @@ public class OverlapBinsDescriptor extends AbstractScalarFunctionDynamicDescript
 
     @Override
     public FunctionIdentifier getIdentifier() {
-        return AsterixBuiltinFunctions.OVERLAP_BINS;
+        return BuiltinFunctions.OVERLAP_BINS;
     }
 
 }

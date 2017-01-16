@@ -27,12 +27,12 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 import org.apache.asterix.common.api.IDatasetLifecycleManager;
-import org.apache.asterix.common.api.ILocalResourceMetadata;
-import org.apache.asterix.common.config.AsterixStorageProperties;
+import org.apache.asterix.common.config.StorageProperties;
 import org.apache.asterix.common.exceptions.ACIDException;
 import org.apache.asterix.common.ioopcallbacks.AbstractLSMIOOperationCallback;
 import org.apache.asterix.common.transactions.ILogManager;
 import org.apache.asterix.common.transactions.LogRecord;
+import org.apache.asterix.common.transactions.Resource;
 import org.apache.asterix.common.utils.TransactionUtil;
 import org.apache.hyracks.api.exceptions.HyracksDataException;
 import org.apache.hyracks.api.lifecycle.ILifeCycleComponent;
@@ -47,7 +47,7 @@ import org.apache.hyracks.storage.common.file.LocalResource;
 
 public class DatasetLifecycleManager implements IDatasetLifecycleManager, ILifeCycleComponent {
     private final Map<Integer, DatasetResource> datasets = new ConcurrentHashMap<>();
-    private final AsterixStorageProperties storageProperties;
+    private final StorageProperties storageProperties;
     private final ILocalResourceRepository resourceRepository;
     private final int firstAvilableUserDatasetID;
     private final long capacity;
@@ -57,7 +57,7 @@ public class DatasetLifecycleManager implements IDatasetLifecycleManager, ILifeC
     private final int numPartitions;
     private volatile boolean stopped = false;
 
-    public DatasetLifecycleManager(AsterixStorageProperties storageProperties,
+    public DatasetLifecycleManager(StorageProperties storageProperties,
             ILocalResourceRepository resourceRepository, int firstAvilableUserDatasetID, ILogManager logManager,
             int numPartitions) {
         this.logManager = logManager;
@@ -101,19 +101,19 @@ public class DatasetLifecycleManager implements IDatasetLifecycleManager, ILifeC
     }
 
     public int getDIDfromResourcePath(String resourcePath) throws HyracksDataException {
-        LocalResource lr = resourceRepository.getResourceByPath(resourcePath);
+        LocalResource lr = resourceRepository.get(resourcePath);
         if (lr == null) {
             return -1;
         }
-        return ((ILocalResourceMetadata) lr.getResourceObject()).getDatasetID();
+        return ((Resource) lr.getResource()).datasetId();
     }
 
     public long getResourceIDfromResourcePath(String resourcePath) throws HyracksDataException {
-        LocalResource lr = resourceRepository.getResourceByPath(resourcePath);
+        LocalResource lr = resourceRepository.get(resourcePath);
         if (lr == null) {
             return -1;
         }
-        return lr.getResourceId();
+        return lr.getId();
     }
 
     @Override
@@ -282,7 +282,7 @@ public class DatasetLifecycleManager implements IDatasetLifecycleManager, ILifeC
     @Override
     public synchronized List<IIndex> getOpenResources() {
         List<IndexInfo> openIndexesInfo = getOpenIndexesInfo();
-        List<IIndex> openIndexes = new ArrayList<IIndex>();
+        List<IIndex> openIndexes = new ArrayList<>();
         for (IndexInfo iInfo : openIndexesInfo) {
             openIndexes.add(iInfo.getIndex());
         }

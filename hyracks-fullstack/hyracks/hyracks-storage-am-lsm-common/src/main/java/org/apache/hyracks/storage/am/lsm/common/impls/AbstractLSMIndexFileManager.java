@@ -35,8 +35,10 @@ import java.util.List;
 
 import org.apache.hyracks.api.exceptions.HyracksDataException;
 import org.apache.hyracks.api.io.FileReference;
+import org.apache.hyracks.api.io.IIOManager;
 import org.apache.hyracks.storage.am.common.api.ITreeIndex;
-import org.apache.hyracks.storage.am.common.api.ITreeIndexMetaDataFrame;
+import org.apache.hyracks.storage.am.common.api.ITreeIndexFrame;
+import org.apache.hyracks.storage.am.common.api.ITreeIndexMetadataFrame;
 import org.apache.hyracks.storage.am.common.api.IndexException;
 import org.apache.hyracks.storage.am.lsm.common.api.ILSMIndexFileManager;
 import org.apache.hyracks.storage.common.buffercache.IBufferCache;
@@ -56,9 +58,9 @@ public abstract class AbstractLSMIndexFileManager implements ILSMIndexFileManage
         VALID
     }
 
+    protected final IIOManager ioManager;
     protected final IFileMapProvider fileMapProvider;
-
-    // baseDir should reflect dataset name and partition name.
+    // baseDir should reflect dataset name and partition name and be absolute
     protected String baseDir;
     protected final Format formatter = new SimpleDateFormat("yyyy-MM-dd-HH-mm-ss-SSS");
     protected final Comparator<String> cmp = new FileNameComparator();
@@ -67,9 +69,10 @@ public abstract class AbstractLSMIndexFileManager implements ILSMIndexFileManage
 
     private String prevTimestamp = null;
 
-    public AbstractLSMIndexFileManager(IFileMapProvider fileMapProvider, FileReference file,
+    public AbstractLSMIndexFileManager(IIOManager ioManager, IFileMapProvider fileMapProvider, FileReference file,
                                        TreeIndexFactory<? extends ITreeIndex> treeFactory) {
-        this.baseDir = file.getFile().getPath();
+        this.ioManager = ioManager;
+        this.baseDir = file.getFile().getAbsolutePath();
         if (!baseDir.endsWith(System.getProperty("file.separator"))) {
             baseDir += System.getProperty("file.separator");
         }
@@ -88,12 +91,11 @@ public abstract class AbstractLSMIndexFileManager implements ILSMIndexFileManage
         IBufferCache bufferCache = treeIndex.getBufferCache();
         treeIndex.activate();
         try {
-            int metadataPage = treeIndex.getMetaManager().getFirstMetadataPage();
+            int metadataPage = treeIndex.getPageManager().getMetadataPageId();
             if (metadataPage < 0) {
                 return TreeIndexState.INVALID;
             }
-            ITreeIndexMetaDataFrame metadataFrame = treeIndex.getMetaManager().getMetaDataFrameFactory()
-                    .createFrame();
+            ITreeIndexMetadataFrame metadataFrame = treeIndex.getPageManager().createMetadataFrame();
             ICachedPage page = bufferCache.pin(BufferedFileHandle.getDiskPageId(treeIndex.getFileId(), metadataPage),
                     false);
             page.acquireReadLatch();
@@ -101,7 +103,7 @@ public abstract class AbstractLSMIndexFileManager implements ILSMIndexFileManage
                 metadataFrame.setPage(page);
                 if (!metadataFrame.isValid()) {
                     return TreeIndexState.INVALID;
-                } else if (metadataFrame.getVersion() != ITreeIndexMetaDataFrame.VERSION) {
+                } else if (metadataFrame.getVersion() != ITreeIndexFrame.Constants.VERSION) {
                     return TreeIndexState.VERSION_MISMATCH;
                 } else {
                     return TreeIndexState.VALID;
@@ -122,8 +124,7 @@ public abstract class AbstractLSMIndexFileManager implements ILSMIndexFileManage
         File dir = new File(baseDir);
         String[] files = dir.list(filter);
         for (String fileName : files) {
-            File file = new File(dir.getPath() + File.separator + fileName);
-            FileReference fileRef = new FileReference(file);
+            FileReference fileRef = ioManager.resolveAbsolutePath(dir.getPath() + File.separator + fileName);
             if (treeFactory == null) {
                 allFiles.add(new ComparableFileName(fileRef));
                 continue;
@@ -132,7 +133,7 @@ public abstract class AbstractLSMIndexFileManager implements ILSMIndexFileManage
             if (idxState == TreeIndexState.VALID) {
                 allFiles.add(new ComparableFileName(fileRef));
             } else if (idxState == TreeIndexState.INVALID) {
-                file.delete();
+                fileRef.delete();
             }
         }
     }
@@ -141,7 +142,7 @@ public abstract class AbstractLSMIndexFileManager implements ILSMIndexFileManage
                                  FilenameFilter filter,
                                  TreeIndexFactory<? extends ITreeIndex> treeFactory
     ) throws HyracksDataException, IndexException {
-        ArrayList<ComparableFileName> tmpAllInvListsFiles = new ArrayList<ComparableFileName>();
+        ArrayList<ComparableFileName> tmpAllInvListsFiles = new ArrayList<>();
         cleanupAndGetValidFilesInternal(filter, treeFactory, tmpAllInvListsFiles);
         for (ComparableFileName cmpFileName : tmpAllInvListsFiles) {
             int index = cmpFileName.fileName.lastIndexOf(SPLIT_STRING);
@@ -183,16 +184,16 @@ public abstract class AbstractLSMIndexFileManager implements ILSMIndexFileManage
         }
     };
 
-    protected FileReference createFlushFile(String relFlushFileName) {
-        return new FileReference(new File(relFlushFileName));
+    protected FileReference createFlushFile(String flushFileName) throws HyracksDataException {
+        return ioManager.resolveAbsolutePath(flushFileName);
     }
 
-    protected FileReference createMergeFile(String relMergeFileName) {
-        return createFlushFile(relMergeFileName);
+    protected FileReference createMergeFile(String mergeFileName) throws HyracksDataException {
+        return createFlushFile(mergeFileName);
     }
 
     @Override
-    public LSMComponentFileReferences getRelFlushFileReference() {
+    public LSMComponentFileReferences getRelFlushFileReference() throws HyracksDataException {
         String ts = getCurrentTimestamp();
         // Begin timestamp and end timestamp are identical since it is a flush
         return new LSMComponentFileReferences(createFlushFile(baseDir + ts + SPLIT_STRING + ts), null, null);
@@ -210,8 +211,8 @@ public abstract class AbstractLSMIndexFileManager implements ILSMIndexFileManage
 
     @Override
     public List<LSMComponentFileReferences> cleanupAndGetValidFiles() throws HyracksDataException, IndexException {
-        List<LSMComponentFileReferences> validFiles = new ArrayList<LSMComponentFileReferences>();
-        ArrayList<ComparableFileName> allFiles = new ArrayList<ComparableFileName>();
+        List<LSMComponentFileReferences> validFiles = new ArrayList<>();
+        ArrayList<ComparableFileName> allFiles = new ArrayList<>();
 
         // Gather files and delete invalid files
         // There are two types of invalid files:
@@ -232,7 +233,7 @@ public abstract class AbstractLSMIndexFileManager implements ILSMIndexFileManage
         // Sorts files names from earliest to latest timestamp.
         Collections.sort(allFiles);
 
-        List<ComparableFileName> validComparableFiles = new ArrayList<ComparableFileName>();
+        List<ComparableFileName> validComparableFiles = new ArrayList<>();
         ComparableFileName last = allFiles.get(0);
         validComparableFiles.add(last);
         for (int i = 1; i < allFiles.size(); i++) {

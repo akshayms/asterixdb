@@ -18,10 +18,10 @@
  */
 package org.apache.asterix.optimizer.rules;
 
-import org.apache.asterix.metadata.declared.AqlDataSource;
-import org.apache.asterix.metadata.declared.AqlDataSource.AqlDataSourceType;
+import org.apache.asterix.metadata.declared.DataSource;
+import org.apache.asterix.metadata.declared.DataSource.Type;
 import org.apache.asterix.metadata.declared.DatasetDataSource;
-import org.apache.asterix.om.functions.AsterixBuiltinFunctions;
+import org.apache.asterix.om.functions.BuiltinFunctions;
 import org.apache.asterix.optimizer.rules.am.AccessMethodJobGenParams;
 import org.apache.commons.lang3.mutable.Mutable;
 import org.apache.commons.lang3.mutable.MutableObject;
@@ -91,7 +91,7 @@ public class IntroduceMaterializationForInsertWithSelfScanRule implements IAlgeb
                 if (unnestExpr.getExpressionTag() == LogicalExpressionTag.FUNCTION_CALL) {
                     AbstractFunctionCallExpression f = (AbstractFunctionCallExpression) unnestExpr;
                     FunctionIdentifier fid = f.getFunctionIdentifier();
-                    if (!fid.equals(AsterixBuiltinFunctions.INDEX_SEARCH)) {
+                    if (!fid.equals(BuiltinFunctions.INDEX_SEARCH)) {
                         throw new IllegalStateException();
                     }
                     AccessMethodJobGenParams jobGenParams = new AccessMethodJobGenParams();
@@ -104,9 +104,9 @@ public class IntroduceMaterializationForInsertWithSelfScanRule implements IAlgeb
                 }
             } else if (descendantOp.getOperatorTag() == LogicalOperatorTag.DATASOURCESCAN) {
                 DataSourceScanOperator dataSourceScanOp = (DataSourceScanOperator) descendantOp;
-                AqlDataSource ds = (AqlDataSource) dataSourceScanOp.getDataSource();
-                if ((ds.getDatasourceType() == AqlDataSourceType.INTERNAL_DATASET
-                        || ds.getDatasourceType() == AqlDataSourceType.EXTERNAL_DATASET)
+                DataSource ds = (DataSource) dataSourceScanOp.getDataSource();
+                if ((ds.getDatasourceType() == Type.INTERNAL_DATASET
+                        || ds.getDatasourceType() == Type.EXTERNAL_DATASET)
                         && ((DatasetDataSource) ds).getDataset().getDatasetName().compareTo(insertDatasetName) == 0) {
                     return true;
                 }

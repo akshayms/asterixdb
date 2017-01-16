@@ -22,7 +22,7 @@ package org.apache.asterix.common.ioopcallbacks;
 import java.util.List;
 
 import org.apache.hyracks.api.exceptions.HyracksDataException;
-import org.apache.hyracks.storage.am.common.api.IMetaDataPageManager;
+import org.apache.hyracks.storage.am.common.api.IMetadataPageManager;
 import org.apache.hyracks.storage.am.lsm.common.api.ILSMComponent;
 import org.apache.hyracks.storage.am.lsm.common.api.LSMOperationType;
 import org.apache.hyracks.storage.am.lsm.rtree.impls.LSMRTreeDiskComponent;
@@ -53,7 +53,7 @@ public class LSMRTreeIOOperationCallback extends AbstractLSMIOOperationCallback 
             }
         }
         // Get max LSN from the diskComponents. Implies a merge IO operation or Recovery operation.
-        long maxLSN = -1;
+        long maxLSN = INVALID;
         for (Object o : diskComponents) {
             LSMRTreeDiskComponent rtreeComponent = (LSMRTreeDiskComponent) o;
             maxLSN = Math.max(AbstractLSMIOOperationCallback.getTreeIndexLSN(rtreeComponent.getRTree()), maxLSN);
@@ -66,8 +66,10 @@ public class LSMRTreeIOOperationCallback extends AbstractLSMIOOperationCallback 
             throws HyracksDataException {
         if (diskComponentFilePath.endsWith(LSMRTreeFileManager.RTREE_STRING)) {
             LSMRTreeDiskComponent rtreeComponent = (LSMRTreeDiskComponent) diskComponent;
-            return rtreeComponent.getRTree().getMetaManager().getLSNOffset();
+            IMetadataPageManager metadataPageManager = (IMetadataPageManager) rtreeComponent.getRTree()
+                    .getPageManager();
+            return metadataPageManager.getFileOffset(metadataPageManager.createMetadataFrame(), LSN_KEY);
         }
-        return IMetaDataPageManager.INVALID_LSN_OFFSET;
+        return INVALID;
     }
 }

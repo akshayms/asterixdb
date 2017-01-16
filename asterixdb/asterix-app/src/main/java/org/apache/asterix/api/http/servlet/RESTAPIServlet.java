@@ -33,6 +33,7 @@ import javax.servlet.http.HttpServlet;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.asterix.app.result.ResultReader;
 import org.apache.asterix.app.result.ResultUtil;
 import org.apache.asterix.app.translator.QueryTranslator;
@@ -49,10 +50,11 @@ import org.apache.asterix.translator.IStatementExecutorFactory;
 import org.apache.asterix.translator.SessionConfig;
 import org.apache.asterix.translator.SessionConfig.OutputFormat;
 import org.apache.commons.io.IOUtils;
+import org.apache.hyracks.algebricks.core.algebra.prettyprint.AlgebricksAppendable;
 import org.apache.hyracks.api.client.IHyracksClientConnection;
 import org.apache.hyracks.api.dataset.IHyracksDataset;
 import org.apache.hyracks.client.dataset.HyracksDataset;
-import org.json.JSONObject;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 
 abstract class RESTAPIServlet extends HttpServlet {
     private static final long serialVersionUID = 1L;
@@ -108,7 +110,12 @@ abstract class RESTAPIServlet extends HttpServlet {
             format = OutputFormat.LOSSLESS_JSON;
         }
 
-        SessionConfig sessionConfig = new SessionConfig(response.getWriter(), format);
+        SessionConfig.ResultDecorator handlePrefix = (AlgebricksAppendable app) -> app.append("{ \"").append("handle")
+                .append("\": ");
+        SessionConfig.ResultDecorator handlePostfix = (AlgebricksAppendable app) -> app.append(" }");
+
+        SessionConfig sessionConfig = new SessionConfig(response.getWriter(), format, null, null, handlePrefix,
+                handlePostfix);
 
         // If it's JSON or ADM, check for the "wrapper-array" flag. Default is
         // "true" for JSON and "false" for ADM. (Not applicable for CSV.)
@@ -205,9 +212,9 @@ abstract class RESTAPIServlet extends HttpServlet {
         } catch (AsterixException | TokenMgrError | org.apache.asterix.aqlplus.parser.TokenMgrError pe) {
             GlobalConfig.ASTERIX_LOGGER.log(Level.SEVERE, pe.getMessage(), pe);
             String errorMessage = ResultUtil.buildParseExceptionMessage(pe, query);
-            JSONObject errorResp =
+            ObjectNode errorResp =
                     ResultUtil.getErrorResponse(2, errorMessage, "", ResultUtil.extractFullStackTrace(pe));
-            sessionConfig.out().write(errorResp.toString());
+            sessionConfig.out().write(new ObjectMapper().writeValueAsString(errorResp));
             response.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
         } catch (Exception e) {
             GlobalConfig.ASTERIX_LOGGER.log(Level.SEVERE, e.getMessage(), e);
@@ -228,13 +235,13 @@ abstract class RESTAPIServlet extends HttpServlet {
     protected QueryTranslator.ResultDelivery whichResultDelivery(HttpServletRequest request) {
         String mode = request.getParameter("mode");
         if (mode != null) {
-            if (mode.equals("asynchronous")) {
+            if ("asynchronous".equals(mode) || "async".equals(mode)) {
                 return QueryTranslator.ResultDelivery.ASYNC;
-            } else if (mode.equals("asynchronous-deferred")) {
-                return QueryTranslator.ResultDelivery.ASYNC_DEFERRED;
+            } else if ("asynchronous-deferred".equals(mode) || "deferred".equals(mode)) {
+                return QueryTranslator.ResultDelivery.DEFERRED;
             }
         }
-        return QueryTranslator.ResultDelivery.SYNC;
+        return QueryTranslator.ResultDelivery.IMMEDIATE;
     }
 
     protected abstract String getQueryParameter(HttpServletRequest request);

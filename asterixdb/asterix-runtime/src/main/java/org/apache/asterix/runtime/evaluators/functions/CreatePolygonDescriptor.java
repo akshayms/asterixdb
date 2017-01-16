@@ -24,16 +24,16 @@ import java.io.IOException;
 import org.apache.asterix.common.exceptions.AsterixException;
 import org.apache.asterix.dataflow.data.nontagged.serde.ADoubleSerializerDeserializer;
 import org.apache.asterix.dataflow.data.nontagged.serde.APointSerializerDeserializer;
-import org.apache.asterix.formats.nontagged.AqlSerializerDeserializerProvider;
+import org.apache.asterix.formats.nontagged.SerializerDeserializerProvider;
 import org.apache.asterix.om.base.AMissing;
 import org.apache.asterix.om.base.ANull;
-import org.apache.asterix.om.functions.AsterixBuiltinFunctions;
+import org.apache.asterix.om.functions.BuiltinFunctions;
 import org.apache.asterix.om.functions.IFunctionDescriptor;
 import org.apache.asterix.om.functions.IFunctionDescriptorFactory;
 import org.apache.asterix.om.types.ATypeTag;
 import org.apache.asterix.om.types.BuiltinType;
 import org.apache.asterix.runtime.evaluators.base.AbstractScalarFunctionDynamicDescriptor;
-import org.apache.asterix.runtime.evaluators.common.AsterixListAccessor;
+import org.apache.asterix.runtime.evaluators.common.ListAccessor;
 import org.apache.asterix.runtime.exceptions.InvalidDataFormatException;
 import org.apache.asterix.runtime.exceptions.TypeMismatchException;
 import org.apache.asterix.runtime.exceptions.UnsupportedItemTypeException;
@@ -68,16 +68,16 @@ public class CreatePolygonDescriptor extends AbstractScalarFunctionDynamicDescri
             public IScalarEvaluator createScalarEvaluator(IHyracksTaskContext ctx) throws HyracksDataException {
                 return new IScalarEvaluator() {
 
-                    private final AsterixListAccessor listAccessor = new AsterixListAccessor();
+                    private final ListAccessor listAccessor = new ListAccessor();
                     private final ArrayBackedValueStorage resultStorage = new ArrayBackedValueStorage();
                     private final DataOutput out = resultStorage.getDataOutput();
                     private final IScalarEvaluatorFactory listEvalFactory = args[0];
                     private final IPointable inputArgList = new VoidPointable();
                     private final IScalarEvaluator evalList = listEvalFactory.createScalarEvaluator(ctx);
                     @SuppressWarnings("unchecked")
-                    private final ISerializerDeserializer<ANull> nullSerde = AqlSerializerDeserializerProvider.INSTANCE
+                    private final ISerializerDeserializer<ANull> nullSerde = SerializerDeserializerProvider.INSTANCE
                             .getSerializerDeserializer(BuiltinType.ANULL);
-                    private final ISerializerDeserializer<AMissing> missingSerde = AqlSerializerDeserializerProvider.
+                    private final ISerializerDeserializer<AMissing> missingSerde = SerializerDeserializerProvider.
                             INSTANCE.getSerializerDeserializer(BuiltinType.AMISSING);
 
                     @Override
@@ -109,7 +109,7 @@ public class CreatePolygonDescriptor extends AbstractScalarFunctionDynamicDescri
                                             missingSerde.serialize(AMissing.MISSING, out);
                                             return;
                                         }
-                                        throw new UnsupportedItemTypeException(AsterixBuiltinFunctions.CREATE_POLYGON,
+                                        throw new UnsupportedItemTypeException(BuiltinFunctions.CREATE_POLYGON,
                                                 itemType.serialize());
                                     }
 
@@ -149,6 +149,6 @@ public class CreatePolygonDescriptor extends AbstractScalarFunctionDynamicDescri
 
     @Override
     public FunctionIdentifier getIdentifier() {
-        return AsterixBuiltinFunctions.CREATE_POLYGON;
+        return BuiltinFunctions.CREATE_POLYGON;
     }
 }
