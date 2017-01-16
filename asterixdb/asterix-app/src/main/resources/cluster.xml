@@ -39,11 +39,11 @@
   <node>
     <id>nc1</id>
     <cluster_ip>127.0.0.1</cluster_ip>
-    <replication_port>2016</replication_port>
+    <replication_port>2017</replication_port>
   </node>
   <node>
     <id>nc2</id>
     <cluster_ip>127.0.0.1</cluster_ip>
-    <replication_port>2017</replication_port>
+    <replication_port>2018</replication_port>
   </node>
 </cluster>

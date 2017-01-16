@@ -71,6 +71,7 @@ import org.apache.asterix.transaction.management.service.transaction.Transaction
 import org.apache.commons.io.FileUtils;
 import org.apache.hyracks.api.exceptions.HyracksDataException;
 import org.apache.hyracks.api.lifecycle.ILifeCycleComponent;
+import org.apache.hyracks.dataflow.common.data.accessors.ITupleReference;
 import org.apache.hyracks.storage.am.common.api.IIndex;
 import org.apache.hyracks.storage.am.common.impls.NoOpOperationCallback;
 import org.apache.hyracks.storage.am.common.ophelpers.IndexOperation;
@@ -688,6 +689,7 @@ public class RecoveryManager implements IRecoveryManager, ILifeCycleComponent {
 
     @Override
     public void rollbackTransaction(ITransactionContext txnContext) throws ACIDException {
+        LOGGER.info("===ROLLING BACK!===");
         int abortedJobId = txnContext.getJobId().getId();
         // Obtain the first/last log record LSNs written by the Job
         long firstLSN = txnContext.getFirstLSN();
@@ -736,6 +738,7 @@ public class RecoveryManager implements IRecoveryManager, ILifeCycleComponent {
             ILogRecord logRecord = null;
             while (currentLSN < lastLSN) {
                 logRecord = logReader.next();
+                LOGGER.info("ROLLBACK: " + logRecord.getLogRecordForDisplay());
                 if (logRecord == null) {
                     break;
                 } else {
@@ -887,6 +890,27 @@ public class RecoveryManager implements IRecoveryManager, ILifeCycleComponent {
                 indexAccessor.forceDelete(logRecord.getNewValue());
             } else {
                 throw new IllegalStateException("Unsupported OperationType: " + logRecord.getNewOp());
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+            throw new IllegalStateException("Failed to redo", e);
+        }
+    }
+
+    public static void redo(IDatasetLifecycleManager datasetLifecycleManager, ITupleReference newValue,
+            byte operation, int datasetId, long resourceId) {
+        try {
+            ILSMIndex index =
+                    (ILSMIndex) datasetLifecycleManager.getIndex(datasetId, resourceId);
+            ILSMIndexAccessor indexAccessor =
+                    index.createAccessor(NoOpOperationCallback.INSTANCE, NoOpOperationCallback.INSTANCE);
+            if (operation == IndexOperation.INSERT.ordinal()) {
+                indexAccessor.forceInsert(newValue);
+                //indexAccessor.insert(logRecord.getNewValue());
+            } else if (operation == IndexOperation.DELETE.ordinal()) {
+                indexAccessor.forceDelete(newValue);
+            } else {
+                throw new IllegalStateException("Unsupported OperationType: " + operation);
             }
         } catch (Exception e) {
             e.printStackTrace();

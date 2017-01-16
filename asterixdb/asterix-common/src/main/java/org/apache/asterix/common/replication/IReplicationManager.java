@@ -127,4 +127,6 @@ public interface IReplicationManager extends IIOReplicationManager {
      * @param buffer
      */
     public void replicateTxnLogBatch(ByteBuffer buffer);
+
+    public String getNodeId();
 }

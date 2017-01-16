@@ -52,6 +52,7 @@ import org.apache.asterix.common.transactions.*;
 import org.apache.asterix.common.utils.TransactionUtil;
 import org.apache.asterix.replication.functions.ReplicaFilesRequest;
 import org.apache.asterix.replication.functions.ReplicaIndexFlushRequest;
+import org.apache.asterix.replication.functions.ReplicationJob;
 import org.apache.asterix.replication.functions.ReplicationProtocol;
 import org.apache.asterix.replication.functions.ReplicationProtocol.ReplicationRequestType;
 import org.apache.asterix.replication.logging.RemoteLogMapping;
@@ -247,15 +248,18 @@ public class ReplicationChannel extends Thread implements IReplicationChannel {
      */
     private class ReplicationThread implements IReplicationThread {
         private final SocketChannel socketChannel;
-        private final LogRecord remoteLog;
+        //private final LogRecord remoteLog;
+        private LogRecord remoteLog;
         private ByteBuffer inBuffer;
         private ByteBuffer outBuffer;
+        private IDatasetLifecycleManager datasetLifecycleManager;
 
         public ReplicationThread(SocketChannel socketChannel) {
             this.socketChannel = socketChannel;
             inBuffer = ByteBuffer.allocate(INTIAL_BUFFER_SIZE);
             outBuffer = ByteBuffer.allocate(INTIAL_BUFFER_SIZE);
             remoteLog = new LogRecord();
+            datasetLifecycleManager = appContextProvider.getDatasetLifecycleManager();
             LOGGER.info("New replication thread started!");
         }
 
@@ -531,39 +535,10 @@ public class ReplicationChannel extends Thread implements IReplicationChannel {
                 // TODO: update the print statement to include resource ID changes.
             }
             // TODO: Remove entities from the tracker on job completion.
-/*
-            Map<Integer, Integer> entityMap;
-
-            if (!inflightOps.containsKey(jobId)) {
-                entityMap = new HashMap<>();
-                inflightOps.put(jobId, entityMap);
-            } else {
-                entityMap = inflightOps.get(jobId);
-            }
-            if (!entityMap.containsKey(PKHashValue) && logType != LogType.ENTITY_COMMIT) {
-                entityMap.put(PKHashValue, 0);
-            }
-            if (logType != LogType.ENTITY_COMMIT) {
-                entityMap.put(PKHashValue, entityMap.get(PKHashValue) + 1);
-            }
-            else {
-                LOGGER.info("REPL: Completed committing log " + PKHashValue);
-                entityMap.remove(PKHashValue);
-            }
-
-            if (logType == LogType.JOB_COMMIT) {
-                LOGGER.info("REPL: At time of job commit, the count of pending entities is " + entityMap.size());
-                if (entityMap.size() > 0) {
-                    LOGGER.info("REPL: WARNING!! JOB COMMIT HAPPENING BEFORE ENTITY COMMIT!!!");
-                }
-                LOGGER.info("COMPLETED JOB! " + jobId);
-                LOGGER.info(printOpStatus());
-                inflightOps.remove(jobId);
-                completedJobs.add(jobId);
-            }*/
+            // Check all the PKHashValues that have received entity commit and compare them when doing rollback.
         }
 
-        private void materialize(ByteBuffer buffer, LogRecord remoteLog) throws HyracksDataException, ACIDException {
+        private void materialize(LogRecord remoteLog) throws HyracksDataException, ACIDException {
             LOGGER.info("Materializing: " + remoteLog.getLogRecordForDisplay());
 
             IAsterixAppRuntimeContextProvider appRuntimeContext =
@@ -643,13 +618,18 @@ public class ReplicationChannel extends Thread implements IReplicationChannel {
         private void processLogsBatch(ByteBuffer buffer) throws ACIDException {
             int upCount, ecCount, upsertCount, commitCount, abortCount, flushCount, unknown;
             upCount = ecCount = upsertCount = commitCount = abortCount = flushCount = unknown = 0;
+            ILSMIndex index = null;
+            ILocalResourceMetadata localResourceMetadata = null;
+
+
             while (buffer.hasRemaining()) {
                 //get rid of log size
                 inBuffer.getInt();
                 //Deserialize log
+                //remoteLog = new LogRecord();
                 remoteLog.readRemoteLog(inBuffer);
                 remoteLog.setLogSource(LogSource.REMOTE);
-
+                LOGGER.info("Replication Channel log recv :" + remoteLog.getLogRecordForDisplay());
                 switch (remoteLog.getLogType()) {
                     case LogType.UPDATE:
                         upCount++;
@@ -676,14 +656,51 @@ public class ReplicationChannel extends Thread implements IReplicationChannel {
 //                                        }
 //                                    }
                                     // TODO: Test this with worker thread dispatch.
-                                    materialize(buffer, remoteLog);
+
+                                    Map<Long, LocalResource> resourceMap = localResourceRepository.loadAndGetAllResources();
+                                    LocalResource localResource = resourceMap.get(remoteLog.getResourceId());
+                                    String partitionIODevicePath = localResourceRepository.getPartitionPath(localResource.getPartition());
+                                    String resourceAbsolutePath =
+                                            partitionIODevicePath + File.separator + localResource.getResourceName();
+                                    localResource.setResourcePath(resourceAbsolutePath);
+                                    index = (ILSMIndex) datasetLifecycleManager.get(resourceAbsolutePath);
+
+                                    if (index == null) {
+                                        localResourceMetadata = (ILocalResourceMetadata) localResource.getResourceObject();
+                                        index = localResourceMetadata.createIndexInstance(txnSubSystem.getAsterixAppRuntimeContextProvider(),
+                                                resourceAbsolutePath, localResource.getPartition(),
+                                                localResourceRepository.getIODeviceNum(localResource.getPartition()));
+                                        datasetLifecycleManager.register(resourceAbsolutePath, index);
+                                        datasetLifecycleManager.open(resourceAbsolutePath);
+                                        // must be closed for each job ?
+                                    }
+
+                                    ReplicationJob rJob = new ReplicationJob(remoteLog.getResourceId(), remoteLog
+                                            .getJobId(), remoteLog.getDatasetId(), remoteLog.getPKHashValue(),
+                                            remoteLog.getLogType(), remoteLog.getNewValue(), remoteLog.getNewOp(),
+                                            txnSubSystem.getAsterixAppRuntimeContextProvider()
+                                                    .getDatasetLifecycleManager());
                                     updateLocalOpTracker();
+                                    materializationThreads.execute(rJob);
+//                                    materializationThreads.execute(() -> {
+//                                        try {
+//                                            LOGGER.info("Waiting to write " + remoteLog.getLogRecordForDisplay());
+//                                            Thread.sleep(10000);
+//                                            materialize(remoteLog);
+//                                            LOGGER.info("Wrote " + remoteLog.getLogRecordForDisplay());
+//                                            updateLocalOpTracker();
+//                                        } catch (Exception e) {
+//                                            LOGGER.severe("Exception occurred while processing remoteLog");
+//                                            e.printStackTrace();
+//                                        }
+//                                    });
+//                                    materialize(remoteLog);
+//                                    updateLocalOpTracker();
                                 } catch (Exception e) {
                                     LOGGER.info("COULD NOT MATERIALIZE! : " + remoteLog.getLogRecordForDisplay());
                                     e.printStackTrace();
                                 }
                             }
-
                         }
                         break;
                     case LogType.JOB_COMMIT:
