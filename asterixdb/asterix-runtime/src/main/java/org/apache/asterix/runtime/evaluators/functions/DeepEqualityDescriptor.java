@@ -21,9 +21,9 @@ package org.apache.asterix.runtime.evaluators.functions;
 
 import java.io.DataOutput;
 
-import org.apache.asterix.formats.nontagged.AqlSerializerDeserializerProvider;
+import org.apache.asterix.formats.nontagged.SerializerDeserializerProvider;
 import org.apache.asterix.om.base.ABoolean;
-import org.apache.asterix.om.functions.AsterixBuiltinFunctions;
+import org.apache.asterix.om.functions.BuiltinFunctions;
 import org.apache.asterix.om.functions.IFunctionDescriptor;
 import org.apache.asterix.om.functions.IFunctionDescriptorFactory;
 import org.apache.asterix.om.pointables.PointableAllocator;
@@ -67,7 +67,7 @@ public class DeepEqualityDescriptor extends AbstractScalarFunctionDynamicDescrip
         return new IScalarEvaluatorFactory() {
             private static final long serialVersionUID = 1L;
             @SuppressWarnings("unchecked")
-            private final ISerializerDeserializer<ABoolean> boolSerde = AqlSerializerDeserializerProvider.INSTANCE
+            private final ISerializerDeserializer<ABoolean> boolSerde = SerializerDeserializerProvider.INSTANCE
                     .getSerializerDeserializer(BuiltinType.ABOOLEAN);
 
             @Override
@@ -107,6 +107,6 @@ public class DeepEqualityDescriptor extends AbstractScalarFunctionDynamicDescrip
 
     @Override
     public FunctionIdentifier getIdentifier() {
-        return AsterixBuiltinFunctions.DEEP_EQUAL;
+        return BuiltinFunctions.DEEP_EQUAL;
     }
 }

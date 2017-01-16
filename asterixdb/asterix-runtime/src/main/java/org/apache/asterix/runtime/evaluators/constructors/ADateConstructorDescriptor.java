@@ -21,12 +21,12 @@ package org.apache.asterix.runtime.evaluators.constructors;
 import java.io.DataOutput;
 import java.io.IOException;
 
-import org.apache.asterix.formats.nontagged.AqlSerializerDeserializerProvider;
+import org.apache.asterix.formats.nontagged.SerializerDeserializerProvider;
 import org.apache.asterix.om.base.ADate;
 import org.apache.asterix.om.base.AMutableDate;
 import org.apache.asterix.om.base.temporal.ADateParserFactory;
 import org.apache.asterix.om.base.temporal.GregorianCalendarSystem;
-import org.apache.asterix.om.functions.AsterixBuiltinFunctions;
+import org.apache.asterix.om.functions.BuiltinFunctions;
 import org.apache.asterix.om.functions.IFunctionDescriptor;
 import org.apache.asterix.om.functions.IFunctionDescriptorFactory;
 import org.apache.asterix.om.types.ATypeTag;
@@ -70,7 +70,7 @@ public class ADateConstructorDescriptor extends AbstractScalarFunctionDynamicDes
                     private IScalarEvaluator eval = args[0].createScalarEvaluator(ctx);
                     private AMutableDate aDate = new AMutableDate(0);
                     @SuppressWarnings("unchecked")
-                    private ISerializerDeserializer<ADate> dateSerde = AqlSerializerDeserializerProvider.INSTANCE
+                    private ISerializerDeserializer<ADate> dateSerde = SerializerDeserializerProvider.INSTANCE
                             .getSerializerDeserializer(BuiltinType.ADATE);
 
                     private final UTF8StringPointable utf8Ptr = new UTF8StringPointable();
@@ -128,7 +128,7 @@ public class ADateConstructorDescriptor extends AbstractScalarFunctionDynamicDes
 
     @Override
     public FunctionIdentifier getIdentifier() {
-        return AsterixBuiltinFunctions.DATE_CONSTRUCTOR;
+        return BuiltinFunctions.DATE_CONSTRUCTOR;
     }
 
 }

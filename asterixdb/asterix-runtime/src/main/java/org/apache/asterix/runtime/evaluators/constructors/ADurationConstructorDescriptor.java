@@ -21,12 +21,12 @@ package org.apache.asterix.runtime.evaluators.constructors;
 import java.io.DataOutput;
 import java.io.IOException;
 
-import org.apache.asterix.formats.nontagged.AqlSerializerDeserializerProvider;
+import org.apache.asterix.formats.nontagged.SerializerDeserializerProvider;
 import org.apache.asterix.om.base.ADuration;
 import org.apache.asterix.om.base.AMutableDuration;
 import org.apache.asterix.om.base.temporal.ADurationParserFactory;
 import org.apache.asterix.om.base.temporal.ADurationParserFactory.ADurationParseOption;
-import org.apache.asterix.om.functions.AsterixBuiltinFunctions;
+import org.apache.asterix.om.functions.BuiltinFunctions;
 import org.apache.asterix.om.functions.IFunctionDescriptor;
 import org.apache.asterix.om.functions.IFunctionDescriptorFactory;
 import org.apache.asterix.om.types.ATypeTag;
@@ -69,7 +69,7 @@ public class ADurationConstructorDescriptor extends AbstractScalarFunctionDynami
                     private IScalarEvaluator eval = args[0].createScalarEvaluator(ctx);
                     private AMutableDuration aDuration = new AMutableDuration(0, 0);
                     @SuppressWarnings("unchecked")
-                    private ISerializerDeserializer<ADuration> durationSerde = AqlSerializerDeserializerProvider.INSTANCE
+                    private ISerializerDeserializer<ADuration> durationSerde = SerializerDeserializerProvider.INSTANCE
                             .getSerializerDeserializer(BuiltinType.ADURATION);
                     private final UTF8StringPointable utf8Ptr = new UTF8StringPointable();
 
@@ -105,7 +105,7 @@ public class ADurationConstructorDescriptor extends AbstractScalarFunctionDynami
 
     @Override
     public FunctionIdentifier getIdentifier() {
-        return AsterixBuiltinFunctions.DURATION_CONSTRUCTOR;
+        return BuiltinFunctions.DURATION_CONSTRUCTOR;
     }
 
 }

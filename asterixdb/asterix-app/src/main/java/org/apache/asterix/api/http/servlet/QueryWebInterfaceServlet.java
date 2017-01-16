@@ -30,12 +30,13 @@ import javax.servlet.http.HttpServlet;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 
-import org.apache.asterix.common.config.AsterixExternalProperties;
-import org.apache.asterix.runtime.util.AsterixAppContextInfo;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import org.apache.asterix.common.config.ExternalProperties;
+import org.apache.asterix.runtime.util.AppContextInfo;
 import org.apache.commons.io.IOUtils;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
-import org.codehaus.jettison.json.JSONObject;
 
 public class QueryWebInterfaceServlet extends HttpServlet {
     private static final long serialVersionUID = 1L;
@@ -109,8 +110,9 @@ public class QueryWebInterfaceServlet extends HttpServlet {
     public void doPost(HttpServletRequest request, HttpServletResponse response) throws IOException {
         response.setCharacterEncoding("utf-8");
         response.setContentType("application/json");
-        AsterixExternalProperties externalProperties = AsterixAppContextInfo.INSTANCE.getExternalProperties();
-        JSONObject obj = new JSONObject();
+        ExternalProperties externalProperties = AppContextInfo.INSTANCE.getExternalProperties();
+        ObjectMapper om = new ObjectMapper();
+        ObjectNode obj = om.createObjectNode();
         try {
             PrintWriter out = response.getWriter();
             obj.put("api_port", String.valueOf(externalProperties.getAPIServerPort()));

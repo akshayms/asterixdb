@@ -22,29 +22,30 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
-import org.apache.asterix.common.config.AsterixStorageProperties;
+import org.apache.asterix.common.config.StorageProperties;
 import org.apache.asterix.common.context.AsterixVirtualBufferCacheProvider;
-import org.apache.asterix.common.dataflow.IAsterixApplicationContextInfo;
+import org.apache.asterix.common.dataflow.IApplicationContextInfo;
+import org.apache.asterix.common.dataflow.LSMIndexUtil;
 import org.apache.asterix.common.ioopcallbacks.LSMInvertedIndexIOOperationCallbackFactory;
-import org.apache.asterix.runtime.util.AsterixRuntimeComponentsProvider;
 import org.apache.asterix.metadata.MetadataException;
 import org.apache.asterix.metadata.MetadataManager;
-import org.apache.asterix.metadata.declared.AqlMetadataProvider;
-import org.apache.asterix.metadata.declared.AqlSourceId;
+import org.apache.asterix.metadata.declared.DataSourceId;
+import org.apache.asterix.metadata.declared.MetadataProvider;
 import org.apache.asterix.metadata.entities.Dataset;
 import org.apache.asterix.metadata.entities.Index;
 import org.apache.asterix.metadata.utils.DatasetUtils;
 import org.apache.asterix.om.base.IAObject;
 import org.apache.asterix.om.constants.AsterixConstantValue;
-import org.apache.asterix.om.functions.AsterixBuiltinFunctions;
+import org.apache.asterix.om.functions.BuiltinFunctions;
 import org.apache.asterix.om.types.ARecordType;
 import org.apache.asterix.om.types.ATypeTag;
 import org.apache.asterix.om.types.IAType;
 import org.apache.asterix.om.util.NonTaggedFormatUtil;
 import org.apache.asterix.optimizer.rules.am.InvertedIndexAccessMethod;
 import org.apache.asterix.optimizer.rules.am.InvertedIndexAccessMethod.SearchModifierType;
-import org.apache.asterix.runtime.util.AsterixAppContextInfo;
 import org.apache.asterix.optimizer.rules.am.InvertedIndexJobGenParams;
+import org.apache.asterix.runtime.util.AppContextInfo;
+import org.apache.asterix.runtime.util.RuntimeComponentsProvider;
 import org.apache.asterix.transaction.management.opcallbacks.SecondaryIndexOperationTrackerProvider;
 import org.apache.hyracks.algebricks.common.constraints.AlgebricksPartitionConstraint;
 import org.apache.hyracks.algebricks.common.exceptions.AlgebricksException;
@@ -90,7 +91,7 @@ import org.apache.hyracks.storage.am.lsm.invertedindex.tokenizers.IBinaryTokeniz
 public class InvertedIndexPOperator extends IndexSearchPOperator {
     private final boolean isPartitioned;
 
-    public InvertedIndexPOperator(IDataSourceIndex<String, AqlSourceId> idx, INodeDomain domain,
+    public InvertedIndexPOperator(IDataSourceIndex<String, DataSourceId> idx, INodeDomain domain,
             boolean requiresBroadcast, boolean isPartitioned) {
         super(idx, domain, requiresBroadcast);
         this.isPartitioned = isPartitioned;
@@ -115,13 +116,13 @@ public class InvertedIndexPOperator extends IndexSearchPOperator {
             throw new IllegalStateException();
         }
         AbstractFunctionCallExpression unnestFuncExpr = (AbstractFunctionCallExpression) unnestExpr;
-        if (unnestFuncExpr.getFunctionIdentifier() != AsterixBuiltinFunctions.INDEX_SEARCH) {
+        if (unnestFuncExpr.getFunctionIdentifier() != BuiltinFunctions.INDEX_SEARCH) {
             return;
         }
         InvertedIndexJobGenParams jobGenParams = new InvertedIndexJobGenParams();
         jobGenParams.readFromFuncArgs(unnestFuncExpr.getArguments());
 
-        AqlMetadataProvider metadataProvider = (AqlMetadataProvider) context.getMetadataProvider();
+        MetadataProvider metadataProvider = (MetadataProvider) context.getMetadataProvider();
         Dataset dataset;
         try {
             dataset = MetadataManager.INSTANCE.getDataset(metadataProvider.getMetadataTxnContext(),
@@ -143,7 +144,8 @@ public class InvertedIndexPOperator extends IndexSearchPOperator {
                 metadataProvider, context, builder.getJobSpec(), unnestMapOp, opSchema, jobGenParams.getRetainInput(),
                 retainNull, jobGenParams.getDatasetName(), dataset, jobGenParams.getIndexName(),
                 jobGenParams.getSearchKeyType(), keyIndexes, jobGenParams.getSearchModifierType(),
-                jobGenParams.getSimilarityThreshold(), minFilterFieldIndexes, maxFilterFieldIndexes);
+                jobGenParams.getSimilarityThreshold(), minFilterFieldIndexes, maxFilterFieldIndexes,
+                jobGenParams.getIsFullTextSearch());
 
         // Contribute operator in hyracks job.
         builder.contributeHyracksOperator(unnestMapOp, invIndexSearch.first);
@@ -153,11 +155,12 @@ public class InvertedIndexPOperator extends IndexSearchPOperator {
     }
 
     public Pair<IOperatorDescriptor, AlgebricksPartitionConstraint> buildInvertedIndexRuntime(
-            AqlMetadataProvider metadataProvider, JobGenContext context, JobSpecification jobSpec,
+            MetadataProvider metadataProvider, JobGenContext context, JobSpecification jobSpec,
             AbstractUnnestMapOperator unnestMap, IOperatorSchema opSchema, boolean retainInput, boolean retainMissing,
             String datasetName, Dataset dataset, String indexName, ATypeTag searchKeyType, int[] keyFields,
             SearchModifierType searchModifierType, IAlgebricksConstantValue similarityThreshold,
-            int[] minFilterFieldIndexes, int[] maxFilterFieldIndexes) throws AlgebricksException {
+            int[] minFilterFieldIndexes, int[] maxFilterFieldIndexes, boolean isFullTextSearchQuery)
+            throws AlgebricksException {
 
         try {
             IAObject simThresh = ((AsterixConstantValue) similarityThreshold).getObject();
@@ -210,7 +213,7 @@ public class InvertedIndexPOperator extends IndexSearchPOperator {
             IVariableTypeEnvironment typeEnv = context.getTypeEnvironment(unnestMap);
             List<LogicalVariable> outputVars = unnestMap.getVariables();
             if (retainInput) {
-                outputVars = new ArrayList<LogicalVariable>();
+                outputVars = new ArrayList<>();
                 VariableUtilities.getLiveVariables(unnestMap, outputVars);
             }
             RecordDescriptor outputRecDesc = JobGenHelper.mkRecordDescriptor(typeEnv, opSchema, context);
@@ -245,7 +248,7 @@ public class InvertedIndexPOperator extends IndexSearchPOperator {
                 }
             }
 
-            IAsterixApplicationContextInfo appContext = (IAsterixApplicationContextInfo) context.getAppContext();
+            IApplicationContextInfo appContext = (IApplicationContextInfo) context.getAppContext();
             Pair<IFileSplitProvider, AlgebricksPartitionConstraint> secondarySplitsAndConstraint = metadataProvider
                     .splitProviderAndPartitionConstraintsForDataset(dataset.getDataverseName(), datasetName, indexName,
                             dataset.getDatasetDetails().isTemp());
@@ -258,7 +261,7 @@ public class InvertedIndexPOperator extends IndexSearchPOperator {
                     .getBinaryTokenizerFactory(searchModifierType, searchKeyType, secondaryIndex);
             IIndexDataflowHelperFactory dataflowHelperFactory;
 
-            AsterixStorageProperties storageProperties = AsterixAppContextInfo.INSTANCE.getStorageProperties();
+            StorageProperties storageProperties = AppContextInfo.INSTANCE.getStorageProperties();
             Pair<ILSMMergePolicyFactory, Map<String, String>> compactionInfo = DatasetUtils
                     .getMergePolicyFactory(dataset, metadataProvider.getMetadataTxnContext());
             boolean temp = dataset.getDatasetDetails().isTemp();
@@ -266,7 +269,7 @@ public class InvertedIndexPOperator extends IndexSearchPOperator {
                 dataflowHelperFactory = new LSMInvertedIndexDataflowHelperFactory(
                         new AsterixVirtualBufferCacheProvider(dataset.getDatasetId()), compactionInfo.first,
                         compactionInfo.second, new SecondaryIndexOperationTrackerProvider(dataset.getDatasetId()),
-                        AsterixRuntimeComponentsProvider.RUNTIME_PROVIDER,
+                        RuntimeComponentsProvider.RUNTIME_PROVIDER,
                         LSMInvertedIndexIOOperationCallbackFactory.INSTANCE,
                         storageProperties.getBloomFilterFalsePositiveRate(), invertedIndexFields, filterTypeTraits,
                         filterCmpFactories, filterFields, filterFieldsForNonBulkLoadOps,
@@ -275,7 +278,7 @@ public class InvertedIndexPOperator extends IndexSearchPOperator {
                 dataflowHelperFactory = new PartitionedLSMInvertedIndexDataflowHelperFactory(
                         new AsterixVirtualBufferCacheProvider(dataset.getDatasetId()), compactionInfo.first,
                         compactionInfo.second, new SecondaryIndexOperationTrackerProvider(dataset.getDatasetId()),
-                        AsterixRuntimeComponentsProvider.RUNTIME_PROVIDER,
+                        RuntimeComponentsProvider.RUNTIME_PROVIDER,
                         LSMInvertedIndexIOOperationCallbackFactory.INSTANCE,
                         storageProperties.getBloomFilterFalsePositiveRate(), invertedIndexFields, filterTypeTraits,
                         filterCmpFactories, filterFields, filterFieldsForNonBulkLoadOps,
@@ -286,10 +289,9 @@ public class InvertedIndexPOperator extends IndexSearchPOperator {
                     appContext.getIndexLifecycleManagerProvider(), tokenTypeTraits, tokenComparatorFactories,
                     invListsTypeTraits, invListsComparatorFactories, dataflowHelperFactory, queryTokenizerFactory,
                     searchModifierFactory, outputRecDesc, retainInput, retainMissing, context.getMissingWriterFactory(),
-                    NoOpOperationCallbackFactory.INSTANCE, minFilterFieldIndexes, maxFilterFieldIndexes);
-
-            return new Pair<IOperatorDescriptor, AlgebricksPartitionConstraint>(invIndexSearchOp,
-                    secondarySplitsAndConstraint.second);
+                    NoOpOperationCallbackFactory.INSTANCE, minFilterFieldIndexes, maxFilterFieldIndexes,
+                    LSMIndexUtil.getMetadataPageManagerFactory(), isFullTextSearchQuery);
+            return new Pair<>(invIndexSearchOp, secondarySplitsAndConstraint.second);
         } catch (MetadataException e) {
             throw new AlgebricksException(e);
         }

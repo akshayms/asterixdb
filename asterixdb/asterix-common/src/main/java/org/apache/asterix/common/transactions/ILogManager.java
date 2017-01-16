@@ -107,4 +107,8 @@ public interface ILogManager {
     public void closeLogFile(TxnLogFile logFileRef, FileChannel fileChannel) throws IOException;
 
     public ITransactionSubsystem getTransactionSubsystem();
+    /**
+     * Deletes all current log files and start the next log file partition
+     */
+    void renewLogFiles();
 }

@@ -18,9 +18,6 @@
  */
 package org.apache.hyracks.examples.btree.client;
 
-import org.kohsuke.args4j.CmdLineParser;
-import org.kohsuke.args4j.Option;
-
 import org.apache.hyracks.api.client.HyracksConnection;
 import org.apache.hyracks.api.client.IHyracksClientConnection;
 import org.apache.hyracks.api.dataflow.value.IBinaryComparatorFactory;
@@ -45,8 +42,11 @@ import org.apache.hyracks.storage.am.common.api.IIndexLifecycleManagerProvider;
 import org.apache.hyracks.storage.am.common.dataflow.IIndexDataflowHelperFactory;
 import org.apache.hyracks.storage.am.common.dataflow.TreeIndexBulkLoadOperatorDescriptor;
 import org.apache.hyracks.storage.am.common.dataflow.TreeIndexDiskOrderScanOperatorDescriptor;
+import org.apache.hyracks.storage.am.common.freepage.LinkedMetadataPageManagerFactory;
 import org.apache.hyracks.storage.am.common.impls.NoOpOperationCallbackFactory;
 import org.apache.hyracks.storage.common.IStorageManagerInterface;
+import org.kohsuke.args4j.CmdLineParser;
+import org.kohsuke.args4j.Option;
 
 // This example will load a secondary index with <key, primary-index key> pairs
 // We require an existing primary index built with PrimaryIndexBulkLoadExample
@@ -127,7 +127,7 @@ public class SecondaryIndexBulkLoadExample {
         IIndexDataflowHelperFactory dataflowHelperFactory = new BTreeDataflowHelperFactory(true);
         TreeIndexDiskOrderScanOperatorDescriptor btreeScanOp = new TreeIndexDiskOrderScanOperatorDescriptor(spec,
                 recDesc, storageManager, lcManagerProvider, primarySplitProvider, primaryTypeTraits,
-                dataflowHelperFactory, NoOpOperationCallbackFactory.INSTANCE);
+                dataflowHelperFactory, NoOpOperationCallbackFactory.INSTANCE, new LinkedMetadataPageManagerFactory());
         JobHelper.createPartitionConstraint(spec, btreeScanOp, splitNCs);
 
         // sort the tuples as preparation for bulk load into secondary index
@@ -149,7 +149,8 @@ public class SecondaryIndexBulkLoadExample {
         IFileSplitProvider btreeSplitProvider = JobHelper.createFileSplitProvider(splitNCs, options.secondaryBTreeName);
         TreeIndexBulkLoadOperatorDescriptor btreeBulkLoad = new TreeIndexBulkLoadOperatorDescriptor(spec, null,
                 storageManager, lcManagerProvider, btreeSplitProvider, secondaryTypeTraits, comparatorFactories, null,
-                fieldPermutation, 0.7f, false, 1000L, true, dataflowHelperFactory);
+                fieldPermutation, 0.7f, false, 1000L, true, dataflowHelperFactory,
+                new LinkedMetadataPageManagerFactory());
         JobHelper.createPartitionConstraint(spec, btreeBulkLoad, splitNCs);
         NullSinkOperatorDescriptor nsOpDesc = new NullSinkOperatorDescriptor(spec);
         JobHelper.createPartitionConstraint(spec, nsOpDesc, splitNCs);

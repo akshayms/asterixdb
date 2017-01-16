@@ -21,10 +21,10 @@ package org.apache.asterix.runtime.evaluators.constructors;
 import java.io.DataOutput;
 import java.io.IOException;
 
-import org.apache.asterix.formats.nontagged.AqlSerializerDeserializerProvider;
+import org.apache.asterix.formats.nontagged.SerializerDeserializerProvider;
 import org.apache.asterix.om.base.AInt32;
 import org.apache.asterix.om.base.AMutableInt32;
-import org.apache.asterix.om.functions.AsterixBuiltinFunctions;
+import org.apache.asterix.om.functions.BuiltinFunctions;
 import org.apache.asterix.om.functions.IFunctionDescriptor;
 import org.apache.asterix.om.functions.IFunctionDescriptorFactory;
 import org.apache.asterix.om.types.ATypeTag;
@@ -70,7 +70,7 @@ public class AInt32ConstructorDescriptor extends AbstractScalarFunctionDynamicDe
                     private boolean positive;
                     private AMutableInt32 aInt32 = new AMutableInt32(0);
                     @SuppressWarnings("unchecked")
-                    private ISerializerDeserializer<AInt32> int32Serde = AqlSerializerDeserializerProvider.INSTANCE
+                    private ISerializerDeserializer<AInt32> int32Serde = SerializerDeserializerProvider.INSTANCE
                             .getSerializerDeserializer(BuiltinType.AINT32);
                     private final UTF8StringPointable utf8Ptr = new UTF8StringPointable();
 
@@ -133,7 +133,7 @@ public class AInt32ConstructorDescriptor extends AbstractScalarFunctionDynamicDe
 
     @Override
     public FunctionIdentifier getIdentifier() {
-        return AsterixBuiltinFunctions.INT32_CONSTRUCTOR;
+        return BuiltinFunctions.INT32_CONSTRUCTOR;
     }
 
 }

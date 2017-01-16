@@ -27,12 +27,12 @@ public class UnderflowException extends RuntimeDataException {
 
     // Underflow.
     public UnderflowException(FunctionIdentifier fid) {
-        super(ErrorCode.ERROR_OVERFLOW, fid.getName());
+        super(ErrorCode.UNDERFLOW, fid.getName());
     }
 
     // Underflow.
     public UnderflowException(String functionName) {
-        super(ErrorCode.ERROR_OVERFLOW, functionName);
+        super(ErrorCode.UNDERFLOW, functionName);
     }
 
 }

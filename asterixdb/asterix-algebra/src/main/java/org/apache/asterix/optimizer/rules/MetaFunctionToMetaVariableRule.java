@@ -22,11 +22,10 @@ import java.util.ArrayList;
 import java.util.List;
 
 import org.apache.asterix.lang.common.util.FunctionUtil;
-import org.apache.asterix.metadata.declared.AqlDataSource;
-import org.apache.asterix.metadata.declared.AqlDataSource.AqlDataSourceType;
+import org.apache.asterix.metadata.declared.DataSource;
 import org.apache.asterix.metadata.declared.IMutationDataSource;
 import org.apache.asterix.om.constants.AsterixConstantValue;
-import org.apache.asterix.om.functions.AsterixBuiltinFunctions;
+import org.apache.asterix.om.functions.BuiltinFunctions;
 import org.apache.asterix.om.types.IAType;
 import org.apache.commons.lang3.mutable.Mutable;
 import org.apache.commons.lang3.mutable.MutableObject;
@@ -79,16 +78,16 @@ public class MetaFunctionToMetaVariableRule implements IAlgebraicRewriteRule {
         if (op.getOperatorTag() == LogicalOperatorTag.DATASOURCESCAN) {
             DataSourceScanOperator scanOp = (DataSourceScanOperator) op;
             ILogicalExpressionReferenceTransformWithCondition inputTransfomer = visit(op.getInputs().get(0));
-            AqlDataSource dataSource = (AqlDataSource) scanOp.getDataSource();
+            DataSource dataSource = (DataSource) scanOp.getDataSource();
             List<ILogicalExpressionReferenceTransformWithCondition> transformers = null;
             List<LogicalVariable> allVars = scanOp.getVariables();
             LogicalVariable dataVar = dataSource.getDataRecordVariable(allVars);
             LogicalVariable metaVar = dataSource.getMetaVariable(allVars);
             LogicalExpressionReferenceTransform currentTransformer = null;
             // https://issues.apache.org/jira/browse/ASTERIXDB-1618
-            if (dataSource.getDatasourceType() != AqlDataSourceType.EXTERNAL_DATASET
-                    && dataSource.getDatasourceType() != AqlDataSourceType.INTERNAL_DATASET
-                    && dataSource.getDatasourceType() != AqlDataSourceType.LOADABLE) {
+            if (dataSource.getDatasourceType() != DataSource.Type.EXTERNAL_DATASET
+                    && dataSource.getDatasourceType() != DataSource.Type.INTERNAL_DATASET
+                    && dataSource.getDatasourceType() != DataSource.Type.LOADABLE) {
                 IMutationDataSource mds = (IMutationDataSource) dataSource;
                 if (mds.isChange()) {
                     transformers = new ArrayList<>();
@@ -199,7 +198,7 @@ class LogicalExpressionReferenceTransform implements ILogicalExpressionReference
             transform(argRef);
         }
 
-        if (!funcExpr.getFunctionIdentifier().equals(AsterixBuiltinFunctions.META)) {
+        if (!funcExpr.getFunctionIdentifier().equals(BuiltinFunctions.META)) {
             return false;
         }
         // The user query provides more than one parameter for the meta function.
@@ -265,7 +264,7 @@ class MetaKeyToFieldAccessTransform implements ILogicalExpressionReferenceTransf
             return false;
         }
         AbstractFunctionCallExpression funcExpr = (AbstractFunctionCallExpression) expr;
-        if (!funcExpr.getFunctionIdentifier().equals(AsterixBuiltinFunctions.META_KEY)) {
+        if (!funcExpr.getFunctionIdentifier().equals(BuiltinFunctions.META_KEY)) {
             return false;
         }
         // Get arguments
@@ -279,11 +278,11 @@ class MetaKeyToFieldAccessTransform implements ILogicalExpressionReferenceTransf
         switch (fieldNameType.getTypeTag()) {
             case ORDEREDLIST:
                 // Field access nested
-                functionIdentifier = AsterixBuiltinFunctions.FIELD_ACCESS_NESTED;
+                functionIdentifier = BuiltinFunctions.FIELD_ACCESS_NESTED;
                 break;
             case STRING:
                 // field access by name
-                functionIdentifier = AsterixBuiltinFunctions.FIELD_ACCESS_BY_NAME;
+                functionIdentifier = BuiltinFunctions.FIELD_ACCESS_BY_NAME;
                 break;
             default:
                 throw new AlgebricksException("Unsupported field name type " + fieldNameType.getTypeTag());
@@ -314,7 +313,7 @@ class MetaKeyExpressionReferenceTransform implements ILogicalExpressionReference
             return false;
         }
         AbstractFunctionCallExpression funcExpr = (AbstractFunctionCallExpression) expr;
-        if (!funcExpr.getFunctionIdentifier().equals(AsterixBuiltinFunctions.META_KEY)) {
+        if (!funcExpr.getFunctionIdentifier().equals(BuiltinFunctions.META_KEY)) {
             return false;
         }
 

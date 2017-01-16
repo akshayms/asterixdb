@@ -29,7 +29,8 @@ import org.apache.hyracks.api.dataflow.value.IBinaryHashFunctionFamily;
 import org.apache.hyracks.api.dataflow.value.ISerializerDeserializer;
 import org.apache.hyracks.api.dataflow.value.RecordDescriptor;
 import org.apache.hyracks.api.dataset.ResultSetId;
-import org.apache.hyracks.api.io.FileReference;
+import org.apache.hyracks.api.io.FileSplit;
+import org.apache.hyracks.api.io.ManagedFileSplit;
 import org.apache.hyracks.api.job.JobSpecification;
 import org.apache.hyracks.data.std.accessors.PointableBinaryComparatorFactory;
 import org.apache.hyracks.data.std.accessors.PointableBinaryHashFunctionFactory;
@@ -50,7 +51,6 @@ import org.apache.hyracks.dataflow.std.connectors.OneToOneConnectorDescriptor;
 import org.apache.hyracks.dataflow.std.file.ConstantFileSplitProvider;
 import org.apache.hyracks.dataflow.std.file.DelimitedDataTupleParserFactory;
 import org.apache.hyracks.dataflow.std.file.FileScanOperatorDescriptor;
-import org.apache.hyracks.dataflow.std.file.FileSplit;
 import org.apache.hyracks.dataflow.std.file.IFileSplitProvider;
 import org.apache.hyracks.dataflow.std.file.ITupleParserFactory;
 import org.apache.hyracks.dataflow.std.group.HashSpillableTableFactory;
@@ -74,7 +74,8 @@ import org.junit.Test;
 public class AggregationTest extends AbstractIntegrationTest {
 
     final IFileSplitProvider splitProvider = new ConstantFileSplitProvider(
-            new FileSplit[] { new FileSplit(NC2_ID, new FileReference(new File("data/tpch0.001/lineitem.tbl"))) });
+            new FileSplit[] { new ManagedFileSplit(NC2_ID, "data" + File.separator + "tpch0.002" + File.separator
+                    + "lineitem.tbl") });
 
     final RecordDescriptor desc = new RecordDescriptor(new ISerializerDeserializer[] {
             new UTF8StringSerializerDeserializer(), IntegerSerializerDeserializer.INSTANCE,
@@ -159,7 +160,7 @@ public class AggregationTest extends AbstractIntegrationTest {
                 IntegerSerializerDeserializer.INSTANCE, FloatSerializerDeserializer.INSTANCE });
 
         int[] keyFields = new int[] { 0 };
-        int frameLimits = 4;
+        int frameLimits = 5;
         int tableSize = 8;
         long fileSize = frameLimits * spec.getFrameSize();
 
@@ -248,7 +249,7 @@ public class AggregationTest extends AbstractIntegrationTest {
                 IntegerSerializerDeserializer.INSTANCE, FloatSerializerDeserializer.INSTANCE });
 
         int[] keyFields = new int[] { 0 };
-        int frameLimits = 4;
+        int frameLimits = 5;
         int tableSize = 8;
         long fileSize = frameLimits * spec.getFrameSize();
 
@@ -337,7 +338,7 @@ public class AggregationTest extends AbstractIntegrationTest {
                         IntegerSerializerDeserializer.INSTANCE, new UTF8StringSerializerDeserializer() });
 
         int[] keyFields = new int[] { 0 };
-        int frameLimits = 4;
+        int frameLimits = 5;
         int tableSize = 8;
         long fileSize = frameLimits * spec.getFrameSize();
 
@@ -428,7 +429,7 @@ public class AggregationTest extends AbstractIntegrationTest {
                 IntegerSerializerDeserializer.INSTANCE, IntegerSerializerDeserializer.INSTANCE });
 
         int[] keyFields = new int[] { 8, 0 };
-        int frameLimits = 4;
+        int frameLimits = 5;
         int tableSize = 8;
         long fileSize = frameLimits * spec.getFrameSize();
 
@@ -523,7 +524,7 @@ public class AggregationTest extends AbstractIntegrationTest {
                         IntegerSerializerDeserializer.INSTANCE, FloatSerializerDeserializer.INSTANCE });
 
         int[] keyFields = new int[] { 8, 0 };
-        int frameLimits = 4;
+        int frameLimits = 5;
         int tableSize = 8;
         long fileSize = frameLimits * spec.getFrameSize();
 
@@ -618,7 +619,7 @@ public class AggregationTest extends AbstractIntegrationTest {
                 IntegerSerializerDeserializer.INSTANCE, new UTF8StringSerializerDeserializer() });
 
         int[] keyFields = new int[] { 8, 0 };
-        int frameLimits = 4;
+        int frameLimits = 5;
         int tableSize = 8;
         long fileSize = frameLimits * spec.getFrameSize();
 

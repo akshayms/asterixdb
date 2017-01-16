@@ -18,7 +18,6 @@
  */
 package org.apache.asterix.common.transactions;
 
-
 public interface ITransactionSubsystem {
 
     public ILogManager getLogManager();
@@ -29,8 +28,9 @@ public interface ITransactionSubsystem {
 
     public IRecoveryManager getRecoveryManager();
 
-    public IAsterixAppRuntimeContextProvider getAsterixAppRuntimeContextProvider();
+    public IAppRuntimeContextProvider getAsterixAppRuntimeContextProvider();
 
     public String getId();
 
+    public ICheckpointManager getCheckpointManager();
 }

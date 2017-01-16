@@ -37,6 +37,7 @@ import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 
 import com.fasterxml.jackson.core.JsonParseException;
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonMappingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -81,7 +82,8 @@ public class QueryServiceServlet extends HttpServlet {
         STATEMENT("statement"),
         FORMAT("format"),
         CLIENT_ID("client_context_id"),
-        PRETTY("pretty");
+        PRETTY("pretty"),
+        MODE("mode");
 
         private final String str;
 
@@ -132,6 +134,7 @@ public class QueryServiceServlet extends HttpServlet {
         TYPE("type"),
         STATUS("status"),
         RESULTS("results"),
+        HANDLE("handle"),
         ERRORS("errors"),
         METRICS("metrics");
 
@@ -229,6 +232,7 @@ public class QueryServiceServlet extends HttpServlet {
         String format;
         boolean pretty;
         String clientContextID;
+        String mode;
 
         @Override
         public String toString() {
@@ -242,6 +246,7 @@ public class QueryServiceServlet extends HttpServlet {
             sb.append("\", ");
             sb.append("\"format\": \"").append(format).append("\", ");
             sb.append("\"pretty\": ").append(pretty).append(", ");
+            sb.append("\"mode\": ").append(mode).append(", ");
             sb.append("\"clientContextID\": \"").append(clientContextID).append("\" ");
             sb.append('}');
             return sb;
@@ -279,7 +284,7 @@ public class QueryServiceServlet extends HttpServlet {
                 return SessionConfig.OutputFormat.ADM;
             }
             if (format.startsWith(MediaType.JSON.str())) {
-                return Boolean.parseBoolean(getParameterValue(format, "lossless"))
+                return Boolean.parseBoolean(getParameterValue(format, Attribute.LOSSLESS.str()))
                         ? SessionConfig.OutputFormat.LOSSLESS_JSON : SessionConfig.OutputFormat.CLEAN_JSON;
             }
         }
@@ -289,6 +294,7 @@ public class QueryServiceServlet extends HttpServlet {
     private static SessionConfig createSessionConfig(RequestParameters param, PrintWriter resultWriter) {
         SessionConfig.ResultDecorator resultPrefix = new SessionConfig.ResultDecorator() {
             int resultNo = -1;
+
             @Override
             public AlgebricksAppendable append(AlgebricksAppendable app) throws AlgebricksException {
                 app.append("\t\"");
@@ -302,19 +308,30 @@ public class QueryServiceServlet extends HttpServlet {
             }
         };
 
-        SessionConfig.ResultDecorator resultPostfix = (AlgebricksAppendable app) -> {
-            app.append("\t,\n");
-            return app;
+
+        SessionConfig.ResultDecorator resultPostfix = (AlgebricksAppendable app) -> app.append("\t,\n");
+
+        SessionConfig.ResultDecorator handlePrefix = new SessionConfig.ResultDecorator() {
+            @Override
+            public AlgebricksAppendable append(AlgebricksAppendable app) throws AlgebricksException {
+                app.append("\t\"");
+                app.append(ResultFields.HANDLE.str());
+                app.append("\": ");
+                return app;
+            }
         };
 
+        SessionConfig.ResultDecorator handlePostfix = (AlgebricksAppendable app) -> app.append(",\n");
+
         SessionConfig.OutputFormat format = getFormat(param.format);
-        SessionConfig sessionConfig = new SessionConfig(resultWriter, format, resultPrefix, resultPostfix);
+        SessionConfig sessionConfig = new SessionConfig(resultWriter, format, resultPrefix, resultPostfix, handlePrefix,
+                handlePostfix);
         sessionConfig.set(SessionConfig.FORMAT_WRAPPER_ARRAY, true);
         sessionConfig.set(SessionConfig.FORMAT_INDENT_JSON, param.pretty);
         sessionConfig.set(SessionConfig.FORMAT_QUOTE_RECORD,
                 format != SessionConfig.OutputFormat.CLEAN_JSON && format != SessionConfig.OutputFormat.LOSSLESS_JSON);
         sessionConfig.set(SessionConfig.FORMAT_CSV_HEADER, format == SessionConfig.OutputFormat.CSV
-                && "present".equals(getParameterValue(param.format, "header")));
+                && "present".equals(getParameterValue(param.format, Attribute.HEADER.str())));
         return sessionConfig;
     }
 
@@ -369,7 +386,7 @@ public class QueryServiceServlet extends HttpServlet {
         printField(pw, ResultFields.STATUS.str(), rs.str());
     }
 
-    private static void printError(PrintWriter pw, Throwable e) {
+    private static void printError(PrintWriter pw, Throwable e) throws JsonProcessingException {
         Throwable rootCause = ResultUtil.getRootCause(e);
         if (rootCause == null) {
             rootCause = e;
@@ -379,16 +396,10 @@ public class QueryServiceServlet extends HttpServlet {
         pw.print(ResultFields.ERRORS.str());
         pw.print("\": [{ \n");
         printField(pw, ErrorField.CODE.str(), "1");
+
         final String msg = rootCause.getMessage();
         printField(pw, ErrorField.MSG.str(), JSONUtil.escape(msg != null ? msg : rootCause.getClass().getSimpleName()),
                 addStack);
-        if (addStack) {
-            StringWriter sw = new StringWriter();
-            PrintWriter stackWriter = new PrintWriter(sw);
-            LOGGER.info(stackWriter.toString());
-            stackWriter.close();
-            printField(pw, ErrorField.STACK.str(), JSONUtil.escape(sw.toString()), false);
-        }
         pw.print("\t}],\n");
     }
 
@@ -440,6 +451,7 @@ public class QueryServiceServlet extends HttpServlet {
                 param.statement = jsonRequest.get(Parameter.STATEMENT.str()).asText();
                 param.format = toLower(getOptText(jsonRequest, Parameter.FORMAT.str()));
                 param.pretty = getOptBoolean(jsonRequest, Parameter.PRETTY.str(), false);
+                param.mode = toLower(getOptText(jsonRequest, Parameter.MODE.str()));
                 param.clientContextID = getOptText(jsonRequest, Parameter.CLIENT_ID.str());
             } catch (JsonParseException | JsonMappingException e) {
                 // if the JSON parsing fails, the statement is empty and we get an empty statement error
@@ -452,6 +464,7 @@ public class QueryServiceServlet extends HttpServlet {
             }
             param.format = toLower(request.getParameter(Parameter.FORMAT.str()));
             param.pretty = Boolean.parseBoolean(request.getParameter(Parameter.PRETTY.str()));
+            param.mode = toLower(request.getParameter(Parameter.MODE.str()));
             param.clientContextID = request.getParameter(Parameter.CLIENT_ID.str());
         }
         return param;
@@ -463,11 +476,23 @@ public class QueryServiceServlet extends HttpServlet {
         return sw.toString();
     }
 
+    private static QueryTranslator.ResultDelivery parseResultDelivery(String mode) {
+        if ("async".equals(mode)) {
+            return QueryTranslator.ResultDelivery.ASYNC;
+        } else if ("deferred".equals(mode)) {
+            return QueryTranslator.ResultDelivery.DEFERRED;
+        } else {
+            return QueryTranslator.ResultDelivery.IMMEDIATE;
+        }
+    }
+
     private void handleRequest(RequestParameters param, HttpServletResponse response) throws IOException {
         LOGGER.info(param.toString());
         long elapsedStart = System.nanoTime();
         final StringWriter stringWriter = new StringWriter();
         final PrintWriter resultWriter = new PrintWriter(stringWriter);
+
+        QueryTranslator.ResultDelivery delivery = parseResultDelivery(param.mode);
 
         SessionConfig sessionConfig = createSessionConfig(param, resultWriter);
         response.setCharacterEncoding("utf-8");
@@ -504,12 +529,12 @@ public class QueryServiceServlet extends HttpServlet {
                 }
             }
             IParser parser = compilationProvider.getParserFactory().createParser(param.statement);
-            List<Statement> aqlStatements = parser.parse();
+            List<Statement> statements = parser.parse();
             MetadataManager.INSTANCE.init();
-            IStatementExecutor translator = statementExecutorFactory.create(aqlStatements, sessionConfig,
+            IStatementExecutor translator = statementExecutorFactory.create(statements, sessionConfig,
                     compilationProvider);
             execStart = System.nanoTime();
-            translator.compileAndExecute(hcc, hds, QueryTranslator.ResultDelivery.SYNC, stats);
+            translator.compileAndExecute(hcc, hds, delivery, stats);
             execEnd = System.nanoTime();
             printStatus(resultWriter, ResultStatus.SUCCESS);
         } catch (AsterixException | TokenMgrError | org.apache.asterix.aqlplus.parser.TokenMgrError pe) {

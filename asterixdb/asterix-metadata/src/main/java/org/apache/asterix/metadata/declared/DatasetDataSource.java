@@ -44,11 +44,11 @@ import org.apache.hyracks.algebricks.core.jobgen.impl.JobGenContext;
 import org.apache.hyracks.api.dataflow.IOperatorDescriptor;
 import org.apache.hyracks.api.job.JobSpecification;
 
-public class DatasetDataSource extends AqlDataSource {
+public class DatasetDataSource extends DataSource {
 
     private Dataset dataset;
 
-    public DatasetDataSource(AqlSourceId id, Dataset dataset, IAType itemType, IAType metaItemType,
+    public DatasetDataSource(DataSourceId id, Dataset dataset, IAType itemType, IAType metaItemType,
             byte datasourceType, IDatasetDetails datasetDetails, INodeDomain datasetDomain)
             throws AlgebricksException {
         super(id, itemType, metaItemType, datasourceType, datasetDomain);
@@ -92,7 +92,7 @@ public class DatasetDataSource extends AqlDataSource {
 
     @Override
     public Pair<IOperatorDescriptor, AlgebricksPartitionConstraint> buildDatasourceScanRuntime(
-            AqlMetadataProvider aqlMetadataProvider, IDataSource<AqlSourceId> dataSource,
+            MetadataProvider metadataProvider, IDataSource<DataSourceId> dataSource,
             List<LogicalVariable> scanVariables, List<LogicalVariable> projectVariables, boolean projectPushed,
             List<LogicalVariable> minFilterVars, List<LogicalVariable> maxFilterVars, IOperatorSchema opSchema,
             IVariableTypeEnvironment typeEnv, JobGenContext context, JobSpecification jobSpec, Object implConfig)
@@ -101,45 +101,41 @@ public class DatasetDataSource extends AqlDataSource {
             case EXTERNAL:
                 Dataset externalDataset = ((DatasetDataSource) dataSource).getDataset();
                 String itemTypeName = externalDataset.getItemTypeName();
-                IAType itemType = MetadataManager.INSTANCE.getDatatype(aqlMetadataProvider.getMetadataTxnContext(),
+                IAType itemType = MetadataManager.INSTANCE.getDatatype(metadataProvider.getMetadataTxnContext(),
                         externalDataset.getItemTypeDataverseName(), itemTypeName).getDatatype();
 
                 ExternalDatasetDetails edd = (ExternalDatasetDetails) externalDataset.getDatasetDetails();
-                IAdapterFactory adapterFactory = aqlMetadataProvider.getConfiguredAdapterFactory(externalDataset,
+                IAdapterFactory adapterFactory = metadataProvider.getConfiguredAdapterFactory(externalDataset,
                         edd.getAdapter(), edd.getProperties(), (ARecordType) itemType, false, null, null);
-                return aqlMetadataProvider.buildExternalDatasetDataScannerRuntime(jobSpec, itemType, adapterFactory,
+                return metadataProvider.buildExternalDatasetDataScannerRuntime(jobSpec, itemType, adapterFactory,
                         NonTaggedDataFormat.INSTANCE);
             case INTERNAL:
-                AqlSourceId asid = getId();
-                String dataverseName = asid.getDataverseName();
-                String datasetName = asid.getDatasourceName();
-                Index primaryIndex = MetadataManager.INSTANCE.getIndex(aqlMetadataProvider.getMetadataTxnContext(),
+                DataSourceId id = getId();
+                String dataverseName = id.getDataverseName();
+                String datasetName = id.getDatasourceName();
+                Index primaryIndex = MetadataManager.INSTANCE.getIndex(metadataProvider.getMetadataTxnContext(),
                         dataverseName, datasetName, datasetName);
 
-                int[] minFilterFieldIndexes = null;
-                if (minFilterVars != null && !minFilterVars.isEmpty()) {
-                    minFilterFieldIndexes = new int[minFilterVars.size()];
-                    int i = 0;
-                    for (LogicalVariable v : minFilterVars) {
-                        minFilterFieldIndexes[i] = opSchema.findVariable(v);
-                        i++;
-                    }
-                }
-                int[] maxFilterFieldIndexes = null;
-                if (maxFilterVars != null && !maxFilterVars.isEmpty()) {
-                    maxFilterFieldIndexes = new int[maxFilterVars.size()];
-                    int i = 0;
-                    for (LogicalVariable v : maxFilterVars) {
-                        maxFilterFieldIndexes[i] = opSchema.findVariable(v);
-                        i++;
-                    }
-                }
-                return aqlMetadataProvider.buildBtreeRuntime(jobSpec, scanVariables, opSchema, typeEnv, context, true,
+                int[] minFilterFieldIndexes = createFilterIndexes(minFilterVars, opSchema);
+                int[] maxFilterFieldIndexes = createFilterIndexes(maxFilterVars, opSchema);
+                return metadataProvider.buildBtreeRuntime(jobSpec, scanVariables, opSchema, typeEnv, context, true,
                         false, ((DatasetDataSource) dataSource).getDataset(), primaryIndex.getIndexName(), null, null,
                         true, true, implConfig, minFilterFieldIndexes, maxFilterFieldIndexes);
             default:
                 throw new AlgebricksException("Unknown datasource type");
         }
+    }
+
+    private int[] createFilterIndexes(List<LogicalVariable> filterVars, IOperatorSchema opSchema) {
+        if (filterVars != null && !filterVars.isEmpty()) {
+            final int size = filterVars.size();
+            int[] result = new int[size];
+            for (int i = 0; i < size; ++i) {
+                result[i] = opSchema.findVariable(filterVars.get(i));
+            }
+            return result;
+        }
+        return null;
     }
 
     @Override

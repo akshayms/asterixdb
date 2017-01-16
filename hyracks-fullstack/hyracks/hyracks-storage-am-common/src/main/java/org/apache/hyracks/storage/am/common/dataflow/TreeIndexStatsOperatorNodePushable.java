@@ -24,6 +24,8 @@ import org.apache.hyracks.api.comm.IFrameWriter;
 import org.apache.hyracks.api.comm.VSizeFrame;
 import org.apache.hyracks.api.context.IHyracksTaskContext;
 import org.apache.hyracks.api.exceptions.HyracksDataException;
+import org.apache.hyracks.api.io.FileReference;
+import org.apache.hyracks.api.io.IIOManager;
 import org.apache.hyracks.dataflow.common.comm.io.ArrayTupleBuilder;
 import org.apache.hyracks.dataflow.common.comm.io.FrameTupleAppender;
 import org.apache.hyracks.dataflow.common.data.marshalling.UTF8StringSerializerDeserializer;
@@ -33,6 +35,7 @@ import org.apache.hyracks.storage.am.common.util.TreeIndexStats;
 import org.apache.hyracks.storage.am.common.util.TreeIndexStatsGatherer;
 import org.apache.hyracks.storage.common.buffercache.IBufferCache;
 import org.apache.hyracks.storage.common.file.IFileMapProvider;
+import org.apache.hyracks.storage.common.file.LocalResource;
 
 public class TreeIndexStatsOperatorNodePushable extends AbstractUnaryOutputSourceOperatorNodePushable {
     private final AbstractTreeIndexOperatorDescriptor opDesc;
@@ -42,7 +45,7 @@ public class TreeIndexStatsOperatorNodePushable extends AbstractUnaryOutputSourc
     private TreeIndexStatsGatherer statsGatherer;
 
     public TreeIndexStatsOperatorNodePushable(AbstractTreeIndexOperatorDescriptor opDesc, IHyracksTaskContext ctx,
-            int partition) {
+            int partition) throws HyracksDataException {
         this.opDesc = opDesc;
         this.ctx = ctx;
         this.treeIndexHelper = (TreeIndexDataflowHelper) opDesc.getIndexDataflowHelperFactory()
@@ -67,12 +70,14 @@ public class TreeIndexStatsOperatorNodePushable extends AbstractUnaryOutputSourc
             writer.open();
             IBufferCache bufferCache = opDesc.getStorageManager().getBufferCache(ctx);
             IFileMapProvider fileMapProvider = opDesc.getStorageManager().getFileMapProvider(ctx);
-            int indexFileId = fileMapProvider.lookupFileId(treeIndexHelper.getFileReference());
-            statsGatherer = new TreeIndexStatsGatherer(bufferCache, treeIndex.getMetaManager(), indexFileId,
+            LocalResource resource = treeIndexHelper.getResource();
+            IIOManager ioManager = ctx.getIOManager();
+            FileReference fileRef = ioManager.resolve(resource.getPath());
+            int indexFileId = fileMapProvider.lookupFileId(fileRef);
+            statsGatherer = new TreeIndexStatsGatherer(bufferCache, treeIndex.getPageManager(), indexFileId,
                     treeIndex.getRootPageId());
             TreeIndexStats stats = statsGatherer.gatherStats(treeIndex.getLeafFrameFactory().createFrame(), treeIndex
-                    .getInteriorFrameFactory().createFrame(), treeIndex.getMetaManager().getMetaDataFrameFactory()
-                    .createFrame());
+                    .getInteriorFrameFactory().createFrame(), treeIndex.getPageManager().createMetadataFrame());
             // Write the stats output as a single string field.
             FrameTupleAppender appender = new FrameTupleAppender(new VSizeFrame(ctx));
             ArrayTupleBuilder tb = new ArrayTupleBuilder(1);

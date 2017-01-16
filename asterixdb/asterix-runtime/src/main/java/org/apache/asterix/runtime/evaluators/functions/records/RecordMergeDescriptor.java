@@ -27,7 +27,7 @@ import org.apache.asterix.builders.RecordBuilder;
 import org.apache.asterix.common.exceptions.AsterixException;
 import org.apache.asterix.common.exceptions.ErrorCode;
 import org.apache.asterix.common.exceptions.RuntimeDataException;
-import org.apache.asterix.om.functions.AsterixBuiltinFunctions;
+import org.apache.asterix.om.functions.BuiltinFunctions;
 import org.apache.asterix.om.functions.IFunctionDescriptor;
 import org.apache.asterix.om.functions.IFunctionDescriptorFactory;
 import org.apache.asterix.om.pointables.ARecordVisitablePointable;
@@ -160,7 +160,7 @@ public class RecordMergeDescriptor extends AbstractScalarFunctionDynamicDescript
                                                 openFromParent, nestedLevel);
                                         foundMatch = true;
                                     } else {
-                                        throw new RuntimeDataException(ErrorCode.ERROR_DUPLICATE_FIELD,
+                                        throw new RuntimeDataException(ErrorCode.DUPLICATE_FIELD_NAME,
                                                 getIdentifier());
                                     }
                                 }
@@ -238,6 +238,6 @@ public class RecordMergeDescriptor extends AbstractScalarFunctionDynamicDescript
 
     @Override
     public FunctionIdentifier getIdentifier() {
-        return AsterixBuiltinFunctions.RECORD_MERGE;
+        return BuiltinFunctions.RECORD_MERGE;
     }
 }

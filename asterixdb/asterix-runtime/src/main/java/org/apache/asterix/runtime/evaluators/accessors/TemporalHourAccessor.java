@@ -25,12 +25,12 @@ import org.apache.asterix.dataflow.data.nontagged.serde.ADayTimeDurationSerializ
 import org.apache.asterix.dataflow.data.nontagged.serde.ADurationSerializerDeserializer;
 import org.apache.asterix.dataflow.data.nontagged.serde.AInt32SerializerDeserializer;
 import org.apache.asterix.dataflow.data.nontagged.serde.AInt64SerializerDeserializer;
-import org.apache.asterix.formats.nontagged.AqlSerializerDeserializerProvider;
+import org.apache.asterix.formats.nontagged.SerializerDeserializerProvider;
 import org.apache.asterix.om.base.AInt64;
 import org.apache.asterix.om.base.AMutableInt64;
 import org.apache.asterix.om.base.temporal.GregorianCalendarSystem;
 import org.apache.asterix.runtime.exceptions.TypeMismatchException;
-import org.apache.asterix.om.functions.AsterixBuiltinFunctions;
+import org.apache.asterix.om.functions.BuiltinFunctions;
 import org.apache.asterix.om.functions.IFunctionDescriptor;
 import org.apache.asterix.om.functions.IFunctionDescriptorFactory;
 import org.apache.asterix.om.types.ATypeTag;
@@ -50,7 +50,7 @@ import org.apache.hyracks.dataflow.common.data.accessors.IFrameTupleReference;
 public class TemporalHourAccessor extends AbstractScalarFunctionDynamicDescriptor {
 
     private static final long serialVersionUID = 1L;
-    private static final FunctionIdentifier FID = AsterixBuiltinFunctions.ACCESSOR_TEMPORAL_HOUR;
+    private static final FunctionIdentifier FID = BuiltinFunctions.ACCESSOR_TEMPORAL_HOUR;
     public static final IFunctionDescriptorFactory FACTORY = new IFunctionDescriptorFactory() {
 
         @Override
@@ -81,7 +81,7 @@ public class TemporalHourAccessor extends AbstractScalarFunctionDynamicDescripto
 
                     // for output: type integer
                     @SuppressWarnings("unchecked")
-                    private final ISerializerDeserializer<AInt64> intSerde = AqlSerializerDeserializerProvider.INSTANCE
+                    private final ISerializerDeserializer<AInt64> intSerde = SerializerDeserializerProvider.INSTANCE
                             .getSerializerDeserializer(BuiltinType.AINT64);
                     private final AMutableInt64 aMutableInt64 = new AMutableInt64(0);
 

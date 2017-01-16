@@ -21,9 +21,9 @@ package org.apache.asterix.runtime.evaluators.functions.temporal;
 import java.io.DataOutput;
 
 import org.apache.asterix.dataflow.data.nontagged.serde.ADurationSerializerDeserializer;
-import org.apache.asterix.formats.nontagged.AqlSerializerDeserializerProvider;
+import org.apache.asterix.formats.nontagged.SerializerDeserializerProvider;
 import org.apache.asterix.om.base.ABoolean;
-import org.apache.asterix.om.functions.AsterixBuiltinFunctions;
+import org.apache.asterix.om.functions.BuiltinFunctions;
 import org.apache.asterix.om.types.ATypeTag;
 import org.apache.asterix.om.types.BuiltinType;
 import org.apache.asterix.runtime.evaluators.base.AbstractScalarFunctionDynamicDescriptor;
@@ -43,8 +43,8 @@ import org.apache.hyracks.dataflow.common.data.accessors.IFrameTupleReference;
 public class DayTimeDurationComparatorDescriptor extends AbstractScalarFunctionDynamicDescriptor {
 
     private final static long serialVersionUID = 1L;
-    public final static FunctionIdentifier GREATER_THAN_FID = AsterixBuiltinFunctions.DAY_TIME_DURATION_GREATER_THAN;
-    public final static FunctionIdentifier LESS_THAN_FID = AsterixBuiltinFunctions.DAY_TIME_DURATION_LESS_THAN;
+    public final static FunctionIdentifier GREATER_THAN_FID = BuiltinFunctions.DAY_TIME_DURATION_GREATER_THAN;
+    public final static FunctionIdentifier LESS_THAN_FID = BuiltinFunctions.DAY_TIME_DURATION_LESS_THAN;
     private final boolean isGreaterThan;
 
     protected DayTimeDurationComparatorDescriptor(boolean isGreaterThan) {
@@ -68,7 +68,7 @@ public class DayTimeDurationComparatorDescriptor extends AbstractScalarFunctionD
                     private IScalarEvaluator eval1 = args[1].createScalarEvaluator(ctx);
 
                     @SuppressWarnings("unchecked")
-                    private ISerializerDeserializer<ABoolean> boolSerde = AqlSerializerDeserializerProvider.INSTANCE
+                    private ISerializerDeserializer<ABoolean> boolSerde = SerializerDeserializerProvider.INSTANCE
                             .getSerializerDeserializer(BuiltinType.ABOOLEAN);
 
                     @Override

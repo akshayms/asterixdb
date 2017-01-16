@@ -19,7 +19,6 @@
 
 package org.apache.hyracks.tests.am.common;
 
-import java.io.File;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 
@@ -28,23 +27,13 @@ public class TreeOperatorTestHelper implements ITreeIndexOperatorTestHelper {
     protected final SimpleDateFormat simpleDateFormat = new SimpleDateFormat("ddMMyy-hhmmssSS");
     protected final String sep = System.getProperty("file.separator");
 
+    @Override
     public String getPrimaryIndexName() {
-        return System.getProperty("java.io.tmpdir") + sep + "primary" + simpleDateFormat.format(new Date());
-    }
-
-    public String getSecondaryIndexName() {
-        return System.getProperty("java.io.tmpdir") + sep + "secondary" + simpleDateFormat.format(new Date());
+        return "primary" + simpleDateFormat.format(new Date());
     }
 
     @Override
-    public void cleanup(String primaryFileName, String secondaryFileName) {
-        File primary = new File(primaryFileName);
-        if (primary.exists()) {
-            primary.deleteOnExit();
-        }
-        File secondary = new File(secondaryFileName);
-        if (secondary.exists()) {
-            secondary.deleteOnExit();
-        }
+    public String getSecondaryIndexName() {
+        return "secondary" + simpleDateFormat.format(new Date());
     }
 }

@@ -21,10 +21,9 @@ package org.apache.hyracks.storage.am.rtree.utils;
 
 import java.util.logging.Logger;
 
+import org.apache.hyracks.api.exceptions.HyracksDataException;
 import org.junit.After;
 import org.junit.Before;
-
-import org.apache.hyracks.api.exceptions.HyracksDataException;
 
 public abstract class AbstractRTreeTest {
     protected final Logger LOGGER = Logger.getLogger(RTreeTestHarness.class.getName());

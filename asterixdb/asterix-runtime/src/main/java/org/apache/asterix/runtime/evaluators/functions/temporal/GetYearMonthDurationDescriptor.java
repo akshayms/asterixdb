@@ -21,11 +21,11 @@ package org.apache.asterix.runtime.evaluators.functions.temporal;
 import java.io.DataOutput;
 
 import org.apache.asterix.dataflow.data.nontagged.serde.ADurationSerializerDeserializer;
-import org.apache.asterix.formats.nontagged.AqlSerializerDeserializerProvider;
+import org.apache.asterix.formats.nontagged.SerializerDeserializerProvider;
 import org.apache.asterix.om.base.AMutableYearMonthDuration;
 import org.apache.asterix.om.base.AYearMonthDuration;
 import org.apache.asterix.runtime.exceptions.TypeMismatchException;
-import org.apache.asterix.om.functions.AsterixBuiltinFunctions;
+import org.apache.asterix.om.functions.BuiltinFunctions;
 import org.apache.asterix.om.functions.IFunctionDescriptor;
 import org.apache.asterix.om.functions.IFunctionDescriptorFactory;
 import org.apache.asterix.om.types.ATypeTag;
@@ -44,7 +44,7 @@ import org.apache.hyracks.dataflow.common.data.accessors.IFrameTupleReference;
 
 public class GetYearMonthDurationDescriptor extends AbstractScalarFunctionDynamicDescriptor {
     private static final long serialVersionUID = 1L;
-    public final static FunctionIdentifier FID = AsterixBuiltinFunctions.GET_YEAR_MONTH_DURATION;
+    public final static FunctionIdentifier FID = BuiltinFunctions.GET_YEAR_MONTH_DURATION;
     public final static IFunctionDescriptorFactory FACTORY = new IFunctionDescriptorFactory() {
 
         @Override
@@ -68,8 +68,9 @@ public class GetYearMonthDurationDescriptor extends AbstractScalarFunctionDynami
                     private IScalarEvaluator eval0 = args[0].createScalarEvaluator(ctx);
 
                     @SuppressWarnings("unchecked")
-                    private ISerializerDeserializer<AYearMonthDuration> yearMonthDurationSerde = AqlSerializerDeserializerProvider.INSTANCE
-                            .getSerializerDeserializer(BuiltinType.AYEARMONTHDURATION);
+                    private ISerializerDeserializer<AYearMonthDuration> yearMonthDurationSerde =
+                            SerializerDeserializerProvider.INSTANCE.getSerializerDeserializer(
+                                    BuiltinType.AYEARMONTHDURATION);
 
                     AMutableYearMonthDuration aYearMonthDuration = new AMutableYearMonthDuration(0);
 

@@ -38,7 +38,7 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 
 import org.apache.asterix.common.cluster.ClusterPartition;
-import org.apache.asterix.common.config.AsterixMetadataProperties;
+import org.apache.asterix.common.config.MetadataProperties;
 import org.apache.asterix.common.config.ClusterProperties;
 import org.apache.asterix.common.replication.IReplicaResourcesManager;
 import org.apache.asterix.common.utils.StoragePathUtil;
@@ -58,7 +58,7 @@ public class ReplicaResourcesManager implements IReplicaResourcesManager {
     private final Map<String, ClusterPartition[]> nodePartitions;
 
     public ReplicaResourcesManager(ILocalResourceRepository localRepository,
-            AsterixMetadataProperties metadataProperties) {
+            MetadataProperties metadataProperties) {
         this.localRepository = (PersistentLocalResourceRepository) localRepository;
         nodePartitions = metadataProperties.getNodePartitions();
     }
@@ -166,7 +166,7 @@ public class ReplicaResourcesManager implements IReplicaResourcesManager {
                     File localResource = new File(
                             indexFolder + File.separator + PersistentLocalResourceRepository.METADATA_FILE_NAME);
                     LocalResource resource = PersistentLocalResourceRepository.readLocalResource(localResource);
-                    laggingReplicaIndexes.put(resource.getResourceId(), indexFolder.getAbsolutePath());
+                    laggingReplicaIndexes.put(resource.getId(), indexFolder.getAbsolutePath());
                 }
             }
         } catch (HyracksDataException e) {

@@ -21,18 +21,16 @@ package org.apache.hyracks.storage.am.lsm.btree;
 
 import java.util.Random;
 
-import org.junit.After;
-import org.junit.Before;
-
 import org.apache.hyracks.api.dataflow.value.ISerializerDeserializer;
 import org.apache.hyracks.api.exceptions.HyracksDataException;
-import org.apache.hyracks.api.exceptions.HyracksException;
 import org.apache.hyracks.storage.am.btree.OrderedIndexBulkLoadTest;
 import org.apache.hyracks.storage.am.btree.OrderedIndexTestContext;
 import org.apache.hyracks.storage.am.btree.frames.BTreeLeafFrameType;
 import org.apache.hyracks.storage.am.config.AccessMethodTestsConfig;
 import org.apache.hyracks.storage.am.lsm.btree.util.LSMBTreeTestContext;
 import org.apache.hyracks.storage.am.lsm.btree.util.LSMBTreeTestHarness;
+import org.junit.After;
+import org.junit.Before;
 
 @SuppressWarnings("rawtypes")
 public class LSMBTreeMultiBulkLoadTest extends OrderedIndexBulkLoadTest {
@@ -44,7 +42,7 @@ public class LSMBTreeMultiBulkLoadTest extends OrderedIndexBulkLoadTest {
     private final LSMBTreeTestHarness harness = new LSMBTreeTestHarness();
 
     @Before
-    public void setUp() throws HyracksException {
+    public void setUp() throws HyracksDataException {
         harness.setUp();
     }
 
@@ -56,10 +54,11 @@ public class LSMBTreeMultiBulkLoadTest extends OrderedIndexBulkLoadTest {
     @Override
     protected OrderedIndexTestContext createTestContext(ISerializerDeserializer[] fieldSerdes, int numKeys,
             BTreeLeafFrameType leafType) throws Exception {
-        return LSMBTreeTestContext.create(harness.getVirtualBufferCaches(), harness.getFileReference(),
+        return LSMBTreeTestContext.create(harness.getIOManager(), harness.getVirtualBufferCaches(), harness
+                .getFileReference(),
                 harness.getDiskBufferCache(), harness.getDiskFileMapProvider(), fieldSerdes, numKeys,
                 harness.getBoomFilterFalsePositiveRate(), harness.getMergePolicy(), harness.getOperationTracker(),
-                harness.getIOScheduler(), harness.getIOOperationCallback());
+                harness.getIOScheduler(), harness.getIOOperationCallback(), harness.getMetadataPageManagerFactory());
     }
 
     @Override

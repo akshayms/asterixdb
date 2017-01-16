@@ -29,10 +29,11 @@ import java.util.Random;
 
 import org.apache.hyracks.api.context.IHyracksTaskContext;
 import org.apache.hyracks.api.exceptions.HyracksDataException;
-import org.apache.hyracks.api.exceptions.HyracksException;
 import org.apache.hyracks.api.io.FileReference;
 import org.apache.hyracks.api.io.IODeviceHandle;
 import org.apache.hyracks.control.nc.io.IOManager;
+import org.apache.hyracks.storage.am.common.api.IMetadataPageManagerFactory;
+import org.apache.hyracks.storage.am.common.freepage.AppendOnlyLinkedMetadataPageManagerFactory;
 import org.apache.hyracks.storage.am.config.AccessMethodTestsConfig;
 import org.apache.hyracks.storage.am.lsm.common.api.ILSMIOOperationCallback;
 import org.apache.hyracks.storage.am.lsm.common.api.ILSMIOOperationScheduler;
@@ -82,6 +83,8 @@ public class LSMInvertedIndexTestHarness {
     protected String btreeFileName = "btree_vocab";
     protected String invIndexFileName = "inv_index";
     protected FileReference invIndexFileRef;
+    protected IMetadataPageManagerFactory metadataPageManagerFactory =
+            new AppendOnlyLinkedMetadataPageManagerFactory();
 
     public LSMInvertedIndexTestHarness() {
         this.diskPageSize = AccessMethodTestsConfig.LSM_INVINDEX_DISK_PAGE_SIZE;
@@ -98,16 +101,16 @@ public class LSMInvertedIndexTestHarness {
         this.numMutableComponents = AccessMethodTestsConfig.LSM_INVINDEX_NUM_MUTABLE_COMPONENTS;
     }
 
-    public void setUp() throws HyracksException {
+    public void setUp() throws HyracksDataException {
         ioManager = TestStorageManagerComponentHolder.getIOManager();
         ioDeviceId = 0;
-        onDiskDir = ioManager.getIODevices().get(ioDeviceId).getPath() + sep + "lsm_invertedindex_"
+        onDiskDir = ioManager.getIODevices().get(ioDeviceId).getMount() + sep + "lsm_invertedindex_"
                 + simpleDateFormat.format(new Date()) + sep;
         ctx = TestUtils.create(getHyracksFrameSize());
         TestStorageManagerComponentHolder.init(diskPageSize, diskNumPages, diskMaxOpenFiles);
         diskBufferCache = TestStorageManagerComponentHolder.getBufferCache(ctx);
         diskFileMapProvider = TestStorageManagerComponentHolder.getFileMapProvider(ctx);
-        virtualBufferCaches = new ArrayList<IVirtualBufferCache>();
+        virtualBufferCaches = new ArrayList<>();
         for (int i = 0; i < numMutableComponents; i++) {
             IVirtualBufferCache virtualBufferCache = new MultitenantVirtualBufferCache(new VirtualBufferCache(
                     new HeapBufferAllocator(), memPageSize, memNumPages / numMutableComponents));
@@ -115,14 +118,15 @@ public class LSMInvertedIndexTestHarness {
             virtualBufferCache.open();
         }
         rnd.setSeed(RANDOM_SEED);
-        invIndexFileRef = ioManager.getIODevices().get(0).createFileReference(onDiskDir + invIndexFileName);
+        invIndexFileRef = ioManager.resolveAbsolutePath(onDiskDir + invIndexFileName);
     }
 
     public void tearDown() throws HyracksDataException {
         diskBufferCache.close();
         IODeviceHandle dev = ioManager.getIODevices().get(ioDeviceId);
-        File dir = new File(dev.getPath(), onDiskDir);
+        File dir = new File(dev.getMount(), onDiskDir);
         FilenameFilter filter = new FilenameFilter() {
+            @Override
             public boolean accept(File dir, String name) {
                 return !name.startsWith(".");
             }
@@ -218,5 +222,9 @@ public class LSMInvertedIndexTestHarness {
 
     public ILSMIOOperationCallback getIOOperationCallback() {
         return ioOpCallback;
+    }
+
+    public IMetadataPageManagerFactory getMetadataPageManagerFactory() {
+        return metadataPageManagerFactory;
     }
 }

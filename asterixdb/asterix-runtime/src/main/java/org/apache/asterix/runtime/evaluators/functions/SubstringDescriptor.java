@@ -23,7 +23,7 @@ import java.io.IOException;
 
 import org.apache.asterix.common.exceptions.ErrorCode;
 import org.apache.asterix.common.exceptions.RuntimeDataException;
-import org.apache.asterix.om.functions.AsterixBuiltinFunctions;
+import org.apache.asterix.om.functions.BuiltinFunctions;
 import org.apache.asterix.om.functions.IFunctionDescriptor;
 import org.apache.asterix.om.functions.IFunctionDescriptorFactory;
 import org.apache.asterix.om.types.ATypeTag;
@@ -103,7 +103,7 @@ public class SubstringDescriptor extends AbstractScalarFunctionDynamicDescriptor
                         try {
                             UTF8StringPointable.substr(string, start, len, builder, array);
                         } catch (StringIndexOutOfBoundsException e) {
-                            throw new RuntimeDataException(ErrorCode.ERROR_OUT_OF_BOUND, getIdentifier(), 1,
+                            throw new RuntimeDataException(ErrorCode.OUT_OF_BOUND, getIdentifier(), 1,
                                     start + len - 1);
                         } catch (IOException e) {
                             throw new HyracksDataException(e);
@@ -124,7 +124,7 @@ public class SubstringDescriptor extends AbstractScalarFunctionDynamicDescriptor
 
     @Override
     public FunctionIdentifier getIdentifier() {
-        return AsterixBuiltinFunctions.SUBSTRING;
+        return BuiltinFunctions.SUBSTRING;
     }
 
 }

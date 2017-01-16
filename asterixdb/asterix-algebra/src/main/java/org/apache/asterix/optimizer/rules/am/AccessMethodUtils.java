@@ -28,9 +28,11 @@ import org.apache.asterix.algebra.operators.physical.ExternalDataLookupPOperator
 import org.apache.asterix.common.config.DatasetConfig.DatasetType;
 import org.apache.asterix.common.config.DatasetConfig.IndexType;
 import org.apache.asterix.common.exceptions.AsterixException;
+import org.apache.asterix.common.exceptions.CompilationException;
+import org.apache.asterix.common.exceptions.ErrorCode;
 import org.apache.asterix.external.indexing.IndexingConstants;
 import org.apache.asterix.lang.common.util.FunctionUtil;
-import org.apache.asterix.metadata.declared.AqlSourceId;
+import org.apache.asterix.metadata.declared.DataSourceId;
 import org.apache.asterix.metadata.entities.Dataset;
 import org.apache.asterix.metadata.entities.ExternalDatasetDetails;
 import org.apache.asterix.metadata.entities.Index;
@@ -39,10 +41,13 @@ import org.apache.asterix.metadata.utils.KeyFieldTypeUtils;
 import org.apache.asterix.om.base.ABoolean;
 import org.apache.asterix.om.base.AInt32;
 import org.apache.asterix.om.base.AString;
+import org.apache.asterix.om.base.IACursor;
+import org.apache.asterix.om.base.IAObject;
 import org.apache.asterix.om.constants.AsterixConstantValue;
-import org.apache.asterix.om.functions.AsterixBuiltinFunctions;
+import org.apache.asterix.om.functions.BuiltinFunctions;
 import org.apache.asterix.om.types.ARecordType;
 import org.apache.asterix.om.types.ATypeTag;
+import org.apache.asterix.om.types.BuiltinType;
 import org.apache.asterix.om.types.IAType;
 import org.apache.asterix.om.types.hierachy.ATypeHierarchy;
 import org.apache.asterix.om.util.ConstantExpressionUtil;
@@ -74,8 +79,10 @@ import org.apache.hyracks.algebricks.core.algebra.operators.logical.OrderOperato
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.OrderOperator.IOrder;
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.SelectOperator;
 import org.apache.hyracks.algebricks.core.algebra.operators.logical.UnnestMapOperator;
+import org.apache.hyracks.algebricks.core.algebra.operators.logical.visitors.VariableUtilities;
 import org.apache.hyracks.algebricks.core.algebra.plan.ALogicalPlanImpl;
 import org.apache.hyracks.algebricks.core.algebra.util.OperatorPropertiesUtil;
+import org.apache.hyracks.storage.am.lsm.invertedindex.tokenizers.DelimitedUTF8StringBinaryTokenizer;
 
 /**
  * Static helper functions for rewriting plans using indexes.
@@ -138,7 +145,9 @@ public class AccessMethodUtils {
         }
         if (arg2.getExpressionTag() == LogicalExpressionTag.VARIABLE) {
             // The arguments of contains() function are asymmetrical, we can only use index if it is on the first argument
-            if (funcExpr.getFunctionIdentifier() == AsterixBuiltinFunctions.STRING_CONTAINS) {
+            if (funcExpr.getFunctionIdentifier() == BuiltinFunctions.STRING_CONTAINS
+                    || funcExpr.getFunctionIdentifier() == BuiltinFunctions.FULLTEXT_CONTAINS
+                    || funcExpr.getFunctionIdentifier() == BuiltinFunctions.FULLTEXT_CONTAINS_WO_OPTION) {
                 return false;
             }
             IAType expressionType = constantRuntimeResultType(arg1, context, typeEnvironment);
@@ -158,6 +167,15 @@ public class AccessMethodUtils {
             }
             constantExpressionType = expressionType;
             constExpression = arg2;
+
+            // For a full-text search query, if the given predicate is a constant and not a single keyword,
+            // i.e. it's a phrase, then we currently throw an exception since we don't support a phrase search
+            // yet in the full-text search.
+            if (funcExpr.getFunctionIdentifier() == BuiltinFunctions.FULLTEXT_CONTAINS
+                    && arg2.getExpressionTag() == LogicalExpressionTag.CONSTANT) {
+                checkFTSearchConstantExpression(constExpression);
+            }
+
             VariableReferenceExpression varExpr = (VariableReferenceExpression) arg1;
             fieldVar = varExpr.getVariableReference();
         } else {
@@ -173,6 +191,61 @@ public class AccessMethodUtils {
         }
         analysisCtx.matchedFuncExprs.add(newOptFuncExpr);
         return true;
+    }
+
+    /**
+     * Fetches each element and calls the check for the type and value in the given list using the given cursor.
+     */
+    private static void checkEachElementInFTSearchListPredicate(IACursor oListCursor)
+            throws AlgebricksException {
+        String argValue;
+        IAObject element;
+        while (oListCursor.next()) {
+            element = oListCursor.get();
+            if (element.getType() == BuiltinType.ASTRING) {
+                argValue = ConstantExpressionUtil.getStringConstant(element);
+                checkAndGenerateFTSearchExceptionForStringPhrase(argValue);
+            } else {
+                throw new CompilationException(ErrorCode.COMPILATION_TYPE_UNSUPPORTED,
+                        BuiltinFunctions.FULLTEXT_CONTAINS.getName(), element.getType().getTypeTag());
+            }
+        }
+    }
+
+    // Checks whether a proper constant expression is in place for the full-text search.
+    // A proper constant expression in the full-text search should be among string, string type (Un)ordered list.
+    public static void checkFTSearchConstantExpression(ILogicalExpression constExpression) throws AlgebricksException {
+        IAObject objectFromExpr = ConstantExpressionUtil.getConstantIaObject(constExpression, null);
+        String arg2Value;
+        IACursor oListCursor;
+
+        switch (objectFromExpr.getType().getTypeTag()) {
+            case STRING:
+                arg2Value = ConstantExpressionUtil.getStringConstant(objectFromExpr);
+                checkAndGenerateFTSearchExceptionForStringPhrase(arg2Value);
+                break;
+            case ORDEREDLIST:
+                oListCursor = ConstantExpressionUtil.getOrderedListConstant(objectFromExpr).getCursor();
+                checkEachElementInFTSearchListPredicate(oListCursor);
+                break;
+            case UNORDEREDLIST:
+                oListCursor = ConstantExpressionUtil.getUnorderedListConstant(objectFromExpr).getCursor();
+                checkEachElementInFTSearchListPredicate(oListCursor);
+                break;
+            default:
+                throw new CompilationException(ErrorCode.COMPILATION_TYPE_UNSUPPORTED,
+                        BuiltinFunctions.FULLTEXT_CONTAINS.getName(), objectFromExpr.getType().getTypeTag());
+        }
+    }
+
+    // Checks whether the given string is a phrase. If so, generates an exception since
+    // we don't support a phrase search in the full-text search yet.
+    public static void checkAndGenerateFTSearchExceptionForStringPhrase(String value) throws AlgebricksException {
+        for (int j = 0; j < value.length(); j++) {
+            if (DelimitedUTF8StringBinaryTokenizer.isSeparator(value.charAt(j))) {
+                throw new CompilationException(ErrorCode.COMPILATION_FULLTEXT_PHRASE_FOUND);
+            }
+        }
     }
 
     public static boolean analyzeFuncExprArgsForTwoVars(AbstractFunctionCallExpression funcExpr,
@@ -208,15 +281,13 @@ public class AccessMethodUtils {
         if (!primaryKeysOnly) {
             switch (index.getIndexType()) {
                 case BTREE:
-                case SINGLE_PARTITION_WORD_INVIX:
-                case SINGLE_PARTITION_NGRAM_INVIX: {
                     dest.addAll(KeyFieldTypeUtils.getBTreeIndexKeyTypes(index, recordType, metaRecordType));
                     break;
-                }
-                case RTREE: {
+                case RTREE:
                     dest.addAll(KeyFieldTypeUtils.getRTreeIndexKeyTypes(index, recordType, metaRecordType));
                     break;
-                }
+                case SINGLE_PARTITION_WORD_INVIX:
+                case SINGLE_PARTITION_NGRAM_INVIX:
                 case LENGTH_PARTITIONED_NGRAM_INVIX:
                 case LENGTH_PARTITIONED_WORD_INVIX:
                 default:
@@ -308,11 +379,18 @@ public class AccessMethodUtils {
             // Type Checking and type promotion is done here
             IAType fieldType = optFuncExpr.getFieldType(0);
 
+            if (optFuncExpr.getNumConstantExpr() == 0) {
+                //We are looking at a selection case, but using two variables
+                //This means that the second variable comes from a nonPure function call
+                //TODO: Right now we miss on type promotion for nonpure functions
+                return new Pair<>(new VariableReferenceExpression(optFuncExpr.getLogicalVar(1)), false);
+            }
+
             ILogicalExpression constantAtRuntimeExpression = null;
             AsterixConstantValue constantValue = null;
             ATypeTag constantValueTag = null;
 
-            constantAtRuntimeExpression = optFuncExpr.getConstantAtRuntimeExpr(0);
+            constantAtRuntimeExpression = optFuncExpr.getConstantExpr(0);
 
             if (constantAtRuntimeExpression.getExpressionTag() == LogicalExpressionTag.CONSTANT) {
                 constantValue = (AsterixConstantValue) ((ConstantExpression) constantAtRuntimeExpression).getValue();
@@ -355,19 +433,16 @@ public class AccessMethodUtils {
             }
 
             if (typeCastingApplied) {
-                return new Pair<ILogicalExpression, Boolean>(new ConstantExpression(replacedConstantValue),
-                        realTypeConvertedToIntegerType);
+                return new Pair<>(new ConstantExpression(replacedConstantValue), realTypeConvertedToIntegerType);
             } else {
-                return new Pair<ILogicalExpression, Boolean>(optFuncExpr.getConstantAtRuntimeExpr(0), false);
+                return new Pair<>(optFuncExpr.getConstantExpr(0), false);
             }
         } else {
             // We are optimizing a join query. Determine which variable feeds the secondary index.
             if (optFuncExpr.getOperatorSubTree(0) == null || optFuncExpr.getOperatorSubTree(0) == probeSubTree) {
-                return new Pair<ILogicalExpression, Boolean>(
-                        new VariableReferenceExpression(optFuncExpr.getLogicalVar(0)), false);
+                return new Pair<>(new VariableReferenceExpression(optFuncExpr.getLogicalVar(0)), false);
             } else {
-                return new Pair<ILogicalExpression, Boolean>(
-                        new VariableReferenceExpression(optFuncExpr.getLogicalVar(1)), false);
+                return new Pair<>(new VariableReferenceExpression(optFuncExpr.getLogicalVar(1)), false);
             }
         }
     }
@@ -403,7 +478,7 @@ public class AccessMethodUtils {
         appendSecondaryIndexTypes(dataset, recordType, metaRecordType, index, outputPrimaryKeysOnly,
                 secondaryIndexOutputTypes);
         // An index search is expressed as an unnest over an index-search function.
-        IFunctionInfo secondaryIndexSearch = FunctionUtil.getFunctionInfo(AsterixBuiltinFunctions.INDEX_SEARCH);
+        IFunctionInfo secondaryIndexSearch = FunctionUtil.getFunctionInfo(BuiltinFunctions.INDEX_SEARCH);
         UnnestingFunctionCallExpression secondaryIndexSearchFunc = new UnnestingFunctionCallExpression(
                 secondaryIndexSearch, secondaryIndexFuncArgs);
         secondaryIndexSearchFunc.setReturnsUniqueValues(true);
@@ -476,7 +551,7 @@ public class AccessMethodUtils {
         primaryIndexUnnestVars.addAll(dataSourceOp.getVariables());
         appendPrimaryIndexTypes(dataset, recordType, metaRecordType, primaryIndexOutputTypes);
         // An index search is expressed as an unnest over an index-search function.
-        IFunctionInfo primaryIndexSearch = FunctionUtil.getFunctionInfo(AsterixBuiltinFunctions.INDEX_SEARCH);
+        IFunctionInfo primaryIndexSearch = FunctionUtil.getFunctionInfo(BuiltinFunctions.INDEX_SEARCH);
         AbstractFunctionCallExpression primaryIndexSearchFunc = new ScalarFunctionCallExpression(primaryIndexSearch,
                 primaryIndexFuncArgs);
         // This is the operator that jobgen will be looking for. It contains an unnest function that has all necessary arguments to determine
@@ -627,7 +702,7 @@ public class AccessMethodUtils {
         externalUnnestVars.addAll(dataSourceOp.getVariables());
         appendExternalRecTypes(dataset, recordType, outputTypes);
 
-        IFunctionInfo externalLookup = FunctionUtil.getFunctionInfo(AsterixBuiltinFunctions.EXTERNAL_LOOKUP);
+        IFunctionInfo externalLookup = FunctionUtil.getFunctionInfo(BuiltinFunctions.EXTERNAL_LOOKUP);
         AbstractFunctionCallExpression externalLookupFunc = new ScalarFunctionCallExpression(externalLookup,
                 externalLookupArgs);
         UnnestMapOperator unnestOp = new UnnestMapOperator(externalUnnestVars,
@@ -639,13 +714,13 @@ public class AccessMethodUtils {
         unnestOp.setExecutionMode(ExecutionMode.PARTITIONED);
 
         //set the physical operator
-        AqlSourceId dataSourceId = new AqlSourceId(dataset.getDataverseName(), dataset.getDatasetName());
+        DataSourceId dataSourceId = new DataSourceId(dataset.getDataverseName(), dataset.getDatasetName());
         unnestOp.setPhysicalOperator(new ExternalDataLookupPOperator(dataSourceId, dataset, recordType, secondaryIndex,
                 primaryKeyVars, false, retainInput, retainNull));
         return unnestOp;
     }
 
-    //If the expression is constant at runtime, runturn the type
+    //If the expression is constant at runtime, return the type
     public static IAType constantRuntimeResultType(ILogicalExpression expr, IOptimizationContext context,
             IVariableTypeEnvironment typeEnvironment) throws AlgebricksException {
         Set<LogicalVariable> usedVariables = new HashSet<LogicalVariable>();
@@ -656,4 +731,24 @@ public class AccessMethodUtils {
         return (IAType) context.getExpressionTypeComputer().getType(expr, context.getMetadataProvider(),
                 typeEnvironment);
     }
+
+    //Get Variables used by afterSelectRefs that were created before the datasource
+    //If there are any, we should retain inputs
+    public static boolean retainInputs(List<LogicalVariable> dataSourceVariables, ILogicalOperator sourceOp,
+            List<Mutable<ILogicalOperator>> afterSelectRefs) throws AlgebricksException {
+        List<LogicalVariable> usedVars = new ArrayList<>();
+        List<LogicalVariable> producedVars = new ArrayList<>();
+        List<LogicalVariable> liveVars = new ArrayList<>();
+        VariableUtilities.getLiveVariables(sourceOp, liveVars);
+        for (Mutable<ILogicalOperator> opMutable : afterSelectRefs) {
+            ILogicalOperator op = opMutable.getValue();
+            VariableUtilities.getUsedVariables(op, usedVars);
+            VariableUtilities.getProducedVariables(op, producedVars);
+        }
+        usedVars.removeAll(producedVars);
+        usedVars.removeAll(dataSourceVariables);
+        usedVars.retainAll(liveVars);
+        return usedVars.isEmpty() ? false : true;
+    }
+
 }

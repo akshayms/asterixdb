@@ -25,12 +25,14 @@ import java.io.FileInputStream;
 import java.io.IOException;
 
 import org.apache.hyracks.api.dataflow.value.RecordDescriptor;
+import org.apache.hyracks.api.io.FileSplit;
 import org.apache.hyracks.api.job.IOperatorDescriptorRegistry;
 
 public class RecordFileScanOperatorDescriptor extends AbstractDeserializedFileScanOperatorDescriptor {
     private static final long serialVersionUID = 1L;
 
-    public RecordFileScanOperatorDescriptor(IOperatorDescriptorRegistry spec, FileSplit[] splits, RecordDescriptor recordDescriptor) {
+    public RecordFileScanOperatorDescriptor(IOperatorDescriptorRegistry spec, FileSplit[] splits,
+            RecordDescriptor recordDescriptor) {
         super(spec, splits, recordDescriptor);
     }
 

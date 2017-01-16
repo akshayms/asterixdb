@@ -21,10 +21,10 @@ package org.apache.asterix.runtime.evaluators.constructors;
 import java.io.DataOutput;
 import java.io.IOException;
 
-import org.apache.asterix.formats.nontagged.AqlSerializerDeserializerProvider;
+import org.apache.asterix.formats.nontagged.SerializerDeserializerProvider;
 import org.apache.asterix.om.base.AMutableUUID;
 import org.apache.asterix.om.base.AUUID;
-import org.apache.asterix.om.functions.AsterixBuiltinFunctions;
+import org.apache.asterix.om.functions.BuiltinFunctions;
 import org.apache.asterix.om.functions.IFunctionDescriptor;
 import org.apache.asterix.om.functions.IFunctionDescriptorFactory;
 import org.apache.asterix.om.types.ATypeTag;
@@ -73,7 +73,7 @@ public class AUUIDFromStringConstructorDescriptor extends AbstractScalarFunction
                     private IScalarEvaluator eval = args[0].createScalarEvaluator(ctx);
                     private AMutableUUID uuid = new AMutableUUID();
                     @SuppressWarnings("unchecked")
-                    private ISerializerDeserializer<AUUID> uuidSerde = AqlSerializerDeserializerProvider.INSTANCE
+                    private ISerializerDeserializer<AUUID> uuidSerde = SerializerDeserializerProvider.INSTANCE
                             .getSerializerDeserializer(BuiltinType.AUUID);
 
                     private final UTF8StringPointable utf8Ptr = new UTF8StringPointable();
@@ -111,7 +111,7 @@ public class AUUIDFromStringConstructorDescriptor extends AbstractScalarFunction
 
     @Override
     public FunctionIdentifier getIdentifier() {
-        return AsterixBuiltinFunctions.UUID_CONSTRUCTOR;
+        return BuiltinFunctions.UUID_CONSTRUCTOR;
     }
 
 }

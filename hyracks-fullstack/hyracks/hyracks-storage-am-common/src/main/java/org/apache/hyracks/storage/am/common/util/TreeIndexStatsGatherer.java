@@ -19,9 +19,9 @@
 package org.apache.hyracks.storage.am.common.util;
 
 import org.apache.hyracks.api.exceptions.HyracksDataException;
-import org.apache.hyracks.storage.am.common.api.IMetaDataPageManager;
+import org.apache.hyracks.storage.am.common.api.IPageManager;
 import org.apache.hyracks.storage.am.common.api.ITreeIndexFrame;
-import org.apache.hyracks.storage.am.common.api.ITreeIndexMetaDataFrame;
+import org.apache.hyracks.storage.am.common.api.ITreeIndexMetadataFrame;
 import org.apache.hyracks.storage.common.buffercache.IBufferCache;
 import org.apache.hyracks.storage.common.buffercache.ICachedPage;
 import org.apache.hyracks.storage.common.file.BufferedFileHandle;
@@ -30,12 +30,12 @@ public class TreeIndexStatsGatherer {
 
     private final TreeIndexStats treeIndexStats = new TreeIndexStats();
     private final IBufferCache bufferCache;
-    private final IMetaDataPageManager freePageManager;
+    private final IPageManager freePageManager;
     private final int fileId;
     private final int rootPage;
 
     public TreeIndexStatsGatherer(IBufferCache bufferCache,
-            IMetaDataPageManager freePageManager, int fileId, int rootPage) {
+            IPageManager freePageManager, int fileId, int rootPage) {
         this.bufferCache = bufferCache;
         this.freePageManager = freePageManager;
         this.fileId = fileId;
@@ -43,14 +43,14 @@ public class TreeIndexStatsGatherer {
     }
 
     public TreeIndexStats gatherStats(ITreeIndexFrame leafFrame,
-            ITreeIndexFrame interiorFrame, ITreeIndexMetaDataFrame metaFrame)
+            ITreeIndexFrame interiorFrame, ITreeIndexMetadataFrame metaFrame)
             throws HyracksDataException {
 
         bufferCache.openFile(fileId);
 
         treeIndexStats.begin();
 
-        int maxPageId = freePageManager.getMaxPage(metaFrame);
+        int maxPageId = freePageManager.getMaxPageId(metaFrame);
         for (int pageId = 0; pageId <= maxPageId; pageId++) {
             ICachedPage page = bufferCache.pin(BufferedFileHandle.getDiskPageId(fileId, pageId), false);
             page.acquireReadLatch();
@@ -72,7 +72,7 @@ public class TreeIndexStatsGatherer {
                         treeIndexStats.add(interiorFrame);
                     }
                 } else {
-                    treeIndexStats.add(metaFrame, freePageManager);
+                    treeIndexStats.add(metaFrame);
                 }
 
             } finally {

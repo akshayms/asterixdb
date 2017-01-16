@@ -24,12 +24,12 @@ import java.io.IOException;
 import org.apache.asterix.dataflow.data.nontagged.Coordinate;
 import org.apache.asterix.dataflow.data.nontagged.serde.ADoubleSerializerDeserializer;
 import org.apache.asterix.dataflow.data.nontagged.serde.APointSerializerDeserializer;
-import org.apache.asterix.formats.nontagged.AqlSerializerDeserializerProvider;
+import org.apache.asterix.formats.nontagged.SerializerDeserializerProvider;
 import org.apache.asterix.om.base.ALine;
 import org.apache.asterix.om.base.AMutableLine;
 import org.apache.asterix.om.base.AMutablePoint;
 import org.apache.asterix.runtime.exceptions.TypeMismatchException;
-import org.apache.asterix.om.functions.AsterixBuiltinFunctions;
+import org.apache.asterix.om.functions.BuiltinFunctions;
 import org.apache.asterix.om.functions.IFunctionDescriptor;
 import org.apache.asterix.om.functions.IFunctionDescriptorFactory;
 import org.apache.asterix.om.types.ATypeTag;
@@ -75,7 +75,7 @@ public class CreateLineDescriptor extends AbstractScalarFunctionDynamicDescripto
                     private AMutableLine aLine = new AMutableLine(null, null);
                     private AMutablePoint[] aPoint = { new AMutablePoint(0, 0), new AMutablePoint(0, 0) };
                     @SuppressWarnings("unchecked")
-                    private ISerializerDeserializer<ALine> lineSerde = AqlSerializerDeserializerProvider.INSTANCE
+                    private ISerializerDeserializer<ALine> lineSerde = SerializerDeserializerProvider.INSTANCE
                             .getSerializerDeserializer(BuiltinType.ALINE);
 
                     @Override
@@ -127,7 +127,7 @@ public class CreateLineDescriptor extends AbstractScalarFunctionDynamicDescripto
 
     @Override
     public FunctionIdentifier getIdentifier() {
-        return AsterixBuiltinFunctions.CREATE_LINE;
+        return BuiltinFunctions.CREATE_LINE;
     }
 
 }

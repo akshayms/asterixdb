@@ -24,12 +24,13 @@ import java.util.Collections;
 import org.apache.asterix.app.bootstrap.TestNodeController;
 import org.apache.asterix.app.data.gen.TupleGenerator;
 import org.apache.asterix.app.data.gen.TupleGenerator.GenerationFunction;
-import org.apache.asterix.common.config.AsterixTransactionProperties;
+import org.apache.asterix.common.config.TransactionProperties;
 import org.apache.asterix.common.config.DatasetConfig.DatasetType;
 import org.apache.asterix.common.configuration.AsterixConfiguration;
 import org.apache.asterix.common.configuration.Property;
-import org.apache.asterix.common.dataflow.AsterixLSMInsertDeleteOperatorNodePushable;
+import org.apache.asterix.common.dataflow.LSMInsertDeleteOperatorNodePushable;
 import org.apache.asterix.common.transactions.DatasetId;
+import org.apache.asterix.common.transactions.ICheckpointManager;
 import org.apache.asterix.common.transactions.IRecoveryManager;
 import org.apache.asterix.common.transactions.ITransactionContext;
 import org.apache.asterix.external.util.DataflowUtils;
@@ -85,10 +86,10 @@ public class CheckpointingTest {
         // Read default test configurations
         AsterixConfiguration ac = TestHelper.getConfigurations(DEFAULT_TEST_CONFIG_FILE_NAME);
         // Set log file size to 2MB
-        ac.getProperty().add(new Property(AsterixTransactionProperties.TXN_LOG_PARTITIONSIZE_KEY,
+        ac.getProperty().add(new Property(TransactionProperties.TXN_LOG_PARTITIONSIZE_KEY,
                 String.valueOf(TXN_LOG_PARTITION_SIZE), ""));
         // Disable checkpointing by making checkpoint thread wait max wait time
-        ac.getProperty().add(new Property(AsterixTransactionProperties.TXN_LOG_CHECKPOINT_POLLFREQUENCY_KEY,
+        ac.getProperty().add(new Property(TransactionProperties.TXN_LOG_CHECKPOINT_POLLFREQUENCY_KEY,
                 String.valueOf(Integer.MAX_VALUE), ""));
         // Write test config file
         TestHelper.writeConfigurations(ac, TEST_CONFIG_FILE_PATH);
@@ -116,7 +117,7 @@ public class CheckpointingTest {
                 nc.newJobId();
                 ITransactionContext txnCtx = nc.getTransactionManager().getTransactionContext(nc.getTxnJobId(), true);
                 // Prepare insert operation
-                AsterixLSMInsertDeleteOperatorNodePushable insertOp = nc.getInsertPipeline(ctx, dataset, KEY_TYPES,
+                LSMInsertDeleteOperatorNodePushable insertOp = nc.getInsertPipeline(ctx, dataset, KEY_TYPES,
                         RECORD_TYPE, META_TYPE, new NoMergePolicyFactory(), null, null);
                 insertOp.open();
                 TupleGenerator tupleGenerator = new TupleGenerator(RECORD_TYPE, META_TYPE, KEY_INDEXES, KEY_INDICATORS,
@@ -125,6 +126,7 @@ public class CheckpointingTest {
                 FrameTupleAppender tupleAppender = new FrameTupleAppender(frame);
 
                 IRecoveryManager recoveryManager = nc.getTransactionSubsystem().getRecoveryManager();
+                ICheckpointManager checkpointManager = nc.getTransactionSubsystem().getCheckpointManager();
                 LogManager logManager = (LogManager) nc.getTransactionSubsystem().getLogManager();
                 // Number of log files after node startup should be one
                 int numberOfLogFiles = logManager.getLogFileIds().size();
@@ -154,7 +156,7 @@ public class CheckpointingTest {
                      * recovery)
                      */
                     int numberOfLogFilesBeforeCheckpoint = logManager.getLogFileIds().size();
-                    recoveryManager.checkpoint(false, logManager.getAppendLSN());
+                    checkpointManager.tryCheckpoint(logManager.getAppendLSN());
                     int numberOfLogFilesAfterCheckpoint = logManager.getLogFileIds().size();
                     Assert.assertEquals(numberOfLogFilesBeforeCheckpoint, numberOfLogFilesAfterCheckpoint);
 
@@ -175,7 +177,7 @@ public class CheckpointingTest {
                  * At this point, the low-water mark is not in the initialLowWaterMarkFileId, so
                  * a checkpoint should delete it.
                  */
-                recoveryManager.checkpoint(false, recoveryManager.getMinFirstLSN());
+                checkpointManager.tryCheckpoint(recoveryManager.getMinFirstLSN());
 
                 // Validate initialLowWaterMarkFileId was deleted
                 for (Long fileId : logManager.getLogFileIds()) {

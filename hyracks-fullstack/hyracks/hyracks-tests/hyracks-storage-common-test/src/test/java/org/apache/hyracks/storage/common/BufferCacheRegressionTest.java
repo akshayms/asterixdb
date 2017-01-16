@@ -18,6 +18,8 @@
  */
 package org.apache.hyracks.storage.common;
 
+import static org.junit.Assert.fail;
+
 import java.io.File;
 import java.io.IOException;
 import java.nio.ByteBuffer;
@@ -25,9 +27,9 @@ import java.nio.ByteBuffer;
 import org.apache.hyracks.api.context.IHyracksTaskContext;
 import org.apache.hyracks.api.io.FileReference;
 import org.apache.hyracks.api.io.IFileHandle;
-import org.apache.hyracks.api.io.IIOManager;
 import org.apache.hyracks.api.io.IIOManager.FileReadWriteMode;
 import org.apache.hyracks.api.io.IIOManager.FileSyncMode;
+import org.apache.hyracks.control.nc.io.IOManager;
 import org.apache.hyracks.storage.common.buffercache.BufferCache;
 import org.apache.hyracks.storage.common.buffercache.IBufferCache;
 import org.apache.hyracks.storage.common.buffercache.ICachedPage;
@@ -39,14 +41,8 @@ import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 
-import static org.junit.Assert.fail;
-
 public class BufferCacheRegressionTest {
-    protected static final String tmpDir = System.getProperty("java.io.tmpdir");
-    protected static final String sep = System.getProperty("file.separator");
-
-    protected String fileName = tmpDir + sep + "flushTestFile";
-
+    protected String fileName = "flushTestFile";
     private static final int PAGE_SIZE = 256;
     private static final int HYRACKS_FRAME_SIZE = PAGE_SIZE;
     private IHyracksTaskContext ctx = TestUtils.create(HYRACKS_FRAME_SIZE);
@@ -81,8 +77,9 @@ public class BufferCacheRegressionTest {
 
         IBufferCache bufferCache = TestStorageManagerComponentHolder.getBufferCache(ctx);
         IFileMapProvider fmp = TestStorageManagerComponentHolder.getFileMapProvider(ctx);
+        IOManager ioManager = TestStorageManagerComponentHolder.getIOManager();
 
-        FileReference firstFileRef = new FileReference(new File(fileName));
+        FileReference firstFileRef = ioManager.resolve(fileName);
         bufferCache.createFile(firstFileRef);
         int firstFileId = fmp.lookupFileId(firstFileRef);
         bufferCache.openFile(firstFileId);
@@ -106,7 +103,7 @@ public class BufferCacheRegressionTest {
         }
 
         // Create a file with the same name.
-        FileReference secondFileRef = new FileReference(new File(fileName));
+        FileReference secondFileRef = ioManager.resolve(fileName);
         bufferCache.createFile(secondFileRef);
         int secondFileId = fmp.lookupFileId(secondFileRef);
 
@@ -122,8 +119,7 @@ public class BufferCacheRegressionTest {
         // ask the BufferCache to pin the page, because it would return the same
         // physical memory again, and for performance reasons pages are never
         // reset with 0's.
-        IIOManager ioManager = ctx.getIOManager();
-        FileReference testFileRef = new FileReference(new File(fileName));
+        FileReference testFileRef = ioManager.resolve(fileName);
         IFileHandle testFileHandle = ioManager.open(testFileRef, FileReadWriteMode.READ_ONLY,
                 FileSyncMode.METADATA_SYNC_DATA_SYNC);
         ByteBuffer testBuffer = ByteBuffer.allocate(PAGE_SIZE + BufferCache.RESERVED_HEADER_BYTES);

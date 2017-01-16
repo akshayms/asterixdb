@@ -20,18 +20,19 @@ package org.apache.asterix.external.library;
 
 import java.io.IOException;
 
-import org.apache.asterix.common.api.IAsterixAppRuntimeContext;
-import org.apache.asterix.common.exceptions.AsterixException;
+import org.apache.asterix.common.api.IAppRuntimeContext;
+import org.apache.asterix.common.exceptions.ErrorCode;
+import org.apache.asterix.common.exceptions.RuntimeDataException;
 import org.apache.asterix.common.library.ILibraryManager;
 import org.apache.asterix.external.api.IExternalFunction;
 import org.apache.asterix.external.api.IFunctionFactory;
 import org.apache.asterix.external.api.IFunctionHelper;
-import org.apache.asterix.formats.nontagged.AqlSerializerDeserializerProvider;
+import org.apache.asterix.formats.nontagged.SerializerDeserializerProvider;
 import org.apache.asterix.om.functions.IExternalFunctionInfo;
 import org.apache.asterix.om.types.ATypeTag;
 import org.apache.asterix.om.types.EnumDeserializer;
 import org.apache.asterix.om.types.hierachy.ATypeHierarchy;
-import org.apache.asterix.runtime.util.AsterixAppContextInfo;
+import org.apache.asterix.runtime.util.AppContextInfo;
 import org.apache.hyracks.algebricks.common.exceptions.AlgebricksException;
 import org.apache.hyracks.algebricks.runtime.base.IScalarEvaluator;
 import org.apache.hyracks.algebricks.runtime.base.IScalarEvaluatorFactory;
@@ -71,10 +72,10 @@ public abstract class ExternalFunction implements IExternalFunction {
         ILibraryManager libraryManager;
         if (context == null) {
             // Gets the library manager for compile-time constant folding.
-            libraryManager = AsterixAppContextInfo.INSTANCE.getLibraryManager();
+            libraryManager = AppContextInfo.INSTANCE.getLibraryManager();
         } else {
             // Gets the library manager for real runtime evaluation.
-            IAsterixAppRuntimeContext runtimeCtx = (IAsterixAppRuntimeContext) context.getJobletContext()
+            IAppRuntimeContext runtimeCtx = (IAppRuntimeContext) context.getJobletContext()
                     .getApplicationContext().getApplicationObject();
             libraryManager = runtimeCtx.getLibraryManager();
         }
@@ -86,19 +87,20 @@ public abstract class ExternalFunction implements IExternalFunction {
             externalFunctionFactory = (IFunctionFactory) clazz.newInstance();
             externalFunction = externalFunctionFactory.getExternalFunction();
         } catch (Exception e) {
-            throw new HyracksDataException(" Unable to load/instantiate class " + classname, e);
+            throw new RuntimeDataException(ErrorCode.LIBRARY_EXTERNAL_FUNCTION_UNABLE_TO_LOAD_CLASS, e,
+                    classname);
         }
     }
 
     public static ISerializerDeserializer<?> getSerDe(Object typeInfo) {
-        return AqlSerializerDeserializerProvider.INSTANCE.getSerializerDeserializer(typeInfo);
+        return SerializerDeserializerProvider.INSTANCE.getSerializerDeserializer(typeInfo);
     }
 
     public IExternalFunctionInfo getFinfo() {
         return finfo;
     }
 
-    public void setArguments(IFrameTupleReference tuple) throws AlgebricksException, IOException, AsterixException {
+    public void setArguments(IFrameTupleReference tuple) throws AlgebricksException, IOException {
         for (int i = 0; i < evaluatorFactories.length; i++) {
             argumentEvaluators[i].evaluate(tuple, inputVal);
 

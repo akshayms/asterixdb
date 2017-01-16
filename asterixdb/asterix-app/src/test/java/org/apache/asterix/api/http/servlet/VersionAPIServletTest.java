@@ -19,6 +19,12 @@
 
 package org.apache.asterix.api.http.servlet;
 
+import static org.apache.asterix.api.http.servlet.ServletConstants.ASTERIX_BUILD_PROP_ATTR;
+import static org.apache.asterix.api.http.servlet.ServletConstants.HYRACKS_CONNECTION_ATTR;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.spy;
+import static org.mockito.Mockito.when;
+
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.InputStreamReader;
@@ -31,27 +37,21 @@ import javax.servlet.ServletContext;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 
-import org.apache.asterix.common.config.AsterixBuildProperties;
-import org.apache.asterix.runtime.util.AsterixAppContextInfo;
-import org.apache.asterix.test.runtime.ExecutionTest;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import org.apache.asterix.common.config.BuildProperties;
+import org.apache.asterix.runtime.util.AppContextInfo;
+import org.apache.asterix.test.runtime.SqlppExecutionTest;
 import org.apache.hyracks.api.client.IHyracksClientConnection;
-import org.json.JSONObject;
-import org.json.JSONTokener;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.junit.Assert;
 import org.junit.Test;
-
-import static org.apache.asterix.api.http.servlet.ServletConstants.ASTERIX_BUILD_PROP_ATTR;
-import static org.apache.asterix.api.http.servlet.ServletConstants.HYRACKS_CONNECTION_ATTR;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.spy;
-import static org.mockito.Mockito.when;
 
 public class VersionAPIServletTest {
 
     @Test
     public void testGet() throws Exception {
         // Starts test asterixdb cluster.
-        ExecutionTest.setUp();
+        SqlppExecutionTest.setUp();
 
         // Configures a test version api servlet.
         VersionAPIServlet servlet = spy(new VersionAPIServlet());
@@ -63,11 +63,11 @@ public class VersionAPIServletTest {
 
         // Creates mocks.
         ServletContext mockContext = mock(ServletContext.class);
-        AsterixAppContextInfo mockCtx = mock(AsterixAppContextInfo.class);
+        AppContextInfo mockCtx = mock(AppContextInfo.class);
         HttpServletRequest mockRequest = mock(HttpServletRequest.class);
         IHyracksClientConnection mockHcc = mock(IHyracksClientConnection.class);
         HttpServletResponse mockResponse = mock(HttpServletResponse.class);
-        AsterixBuildProperties mockProperties = mock(AsterixBuildProperties.class);
+        BuildProperties mockProperties = mock(BuildProperties.class);
 
         // Sets up mock returns.
         when(servlet.getServletContext()).thenReturn(mockContext);
@@ -103,15 +103,18 @@ public class VersionAPIServletTest {
         servlet.doGet(mockRequest, mockResponse);
 
         // Constructs the actual response.
-        JSONTokener tokener = new JSONTokener(
-                new InputStreamReader(new ByteArrayInputStream(outputStream.toByteArray())));
-        JSONObject actualResponse = new JSONObject(tokener);
-        JSONObject expectedResponse = new JSONObject(propMap);
+
+        ObjectMapper om = new ObjectMapper();
+        ObjectNode actualResponse = (ObjectNode) om.readTree(outputStream.toByteArray());
+        ObjectNode expectedResponse = om.createObjectNode();
+        for (Map.Entry<String, String> e : propMap.entrySet()) {
+            expectedResponse.put(e.getKey(), e.getValue());
+        }
 
         // Checks the response contains all the expected keys.
         Assert.assertEquals(actualResponse.toString(), expectedResponse.toString());
 
         // Tears down the asterixdb cluster.
-        ExecutionTest.tearDown();
+        SqlppExecutionTest.tearDown();
     }
 }

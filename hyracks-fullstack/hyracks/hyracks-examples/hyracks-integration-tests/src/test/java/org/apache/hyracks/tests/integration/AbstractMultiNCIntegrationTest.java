@@ -26,6 +26,7 @@ import java.util.List;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.commons.io.FileUtils;
 import org.apache.hyracks.api.client.HyracksConnection;
 import org.apache.hyracks.api.client.IHyracksClientConnection;
@@ -45,7 +46,7 @@ import org.apache.hyracks.control.nc.NodeControllerService;
 import org.apache.hyracks.control.nc.resources.memory.FrameManager;
 import org.apache.hyracks.dataflow.common.comm.io.ResultFrameTupleAccessor;
 import org.apache.hyracks.dataflow.common.comm.util.ByteBufferInputStream;
-import org.json.JSONArray;
+import com.fasterxml.jackson.databind.node.ArrayNode;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
 import org.junit.Rule;
@@ -70,7 +71,7 @@ public abstract class AbstractMultiNCIntegrationTest {
     public TemporaryFolder outputFolder = new TemporaryFolder();
 
     public AbstractMultiNCIntegrationTest() {
-        outputFiles = new ArrayList<File>();
+        outputFiles = new ArrayList<>();
     }
 
     @BeforeClass
@@ -92,6 +93,9 @@ public abstract class AbstractMultiNCIntegrationTest {
 
         asterixNCs = new NodeControllerService[ASTERIX_IDS.length];
         for (int i = 0; i < ASTERIX_IDS.length; i++) {
+            File ioDev = new File("target" + File.separator + ASTERIX_IDS[i] + File.separator + "ioDevice");
+            FileUtils.forceMkdir(ioDev);
+            FileUtils.copyDirectory(new File("data" + File.separator + "device0"), ioDev);
             NCConfig ncConfig = new NCConfig();
             ncConfig.ccHost = "localhost";
             ncConfig.ccPort = 39001;
@@ -99,6 +103,7 @@ public abstract class AbstractMultiNCIntegrationTest {
             ncConfig.dataIPAddress = "127.0.0.1";
             ncConfig.resultIPAddress = "127.0.0.1";
             ncConfig.nodeId = ASTERIX_IDS[i];
+            ncConfig.ioDevices = ioDev.getAbsolutePath();
             asterixNCs[i] = new NodeControllerService(ncConfig);
             asterixNCs[i].start();
         }
@@ -119,7 +124,7 @@ public abstract class AbstractMultiNCIntegrationTest {
 
     protected void runTest(JobSpecification spec) throws Exception {
         if (LOGGER.isLoggable(Level.INFO)) {
-            LOGGER.info(spec.toJSON().toString(2));
+            LOGGER.info(spec.toJSON().asText());
         }
         JobId jobId = hcc.startJob(spec, EnumSet.of(JobFlag.PROFILE_RUNTIME));
         if (LOGGER.isLoggable(Level.INFO)) {
@@ -137,7 +142,8 @@ public abstract class AbstractMultiNCIntegrationTest {
             IHyracksDataset hyracksDataset = new HyracksDataset(hcc, spec.getFrameSize(), nReaders);
             IHyracksDatasetReader reader = hyracksDataset.createReader(jobId, spec.getResultSetIds().get(0));
 
-            JSONArray resultRecords = new JSONArray();
+            ObjectMapper om = new ObjectMapper();
+            ArrayNode resultRecords = om.createArrayNode();
             ByteBufferInputStream bbis = new ByteBufferInputStream();
 
             int readSize = reader.read(resultFrame);
@@ -152,7 +158,7 @@ public abstract class AbstractMultiNCIntegrationTest {
                         bbis.setByteBuffer(resultFrame.getBuffer(), start);
                         byte[] recordBytes = new byte[length];
                         bbis.read(recordBytes, 0, length);
-                        resultRecords.put(new String(recordBytes, 0, length));
+                        resultRecords.add(new String(recordBytes, 0, length));
                     }
                 } finally {
                     try {

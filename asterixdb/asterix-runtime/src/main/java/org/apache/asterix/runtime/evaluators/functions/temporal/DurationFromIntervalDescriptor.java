@@ -21,12 +21,12 @@ package org.apache.asterix.runtime.evaluators.functions.temporal;
 import java.io.DataOutput;
 
 import org.apache.asterix.dataflow.data.nontagged.serde.AIntervalSerializerDeserializer;
-import org.apache.asterix.formats.nontagged.AqlSerializerDeserializerProvider;
+import org.apache.asterix.formats.nontagged.SerializerDeserializerProvider;
 import org.apache.asterix.om.base.ADayTimeDuration;
 import org.apache.asterix.om.base.AMutableDayTimeDuration;
 import org.apache.asterix.om.base.temporal.GregorianCalendarSystem;
 import org.apache.asterix.runtime.exceptions.TypeMismatchException;
-import org.apache.asterix.om.functions.AsterixBuiltinFunctions;
+import org.apache.asterix.om.functions.BuiltinFunctions;
 import org.apache.asterix.om.functions.IFunctionDescriptor;
 import org.apache.asterix.om.functions.IFunctionDescriptorFactory;
 import org.apache.asterix.om.types.ATypeTag;
@@ -45,7 +45,7 @@ import org.apache.hyracks.dataflow.common.data.accessors.IFrameTupleReference;
 
 public class DurationFromIntervalDescriptor extends AbstractScalarFunctionDynamicDescriptor {
     private static final long serialVersionUID = 1L;
-    public final static FunctionIdentifier FID = AsterixBuiltinFunctions.DURATION_FROM_INTERVAL;
+    public final static FunctionIdentifier FID = BuiltinFunctions.DURATION_FROM_INTERVAL;
     public final static IFunctionDescriptorFactory FACTORY = new IFunctionDescriptorFactory() {
 
         @Override
@@ -70,8 +70,9 @@ public class DurationFromIntervalDescriptor extends AbstractScalarFunctionDynami
                     private IScalarEvaluator eval = args[0].createScalarEvaluator(ctx);
 
                     @SuppressWarnings("unchecked")
-                    private ISerializerDeserializer<ADayTimeDuration> dayTimeDurationSerde = AqlSerializerDeserializerProvider.INSTANCE
-                            .getSerializerDeserializer(BuiltinType.ADAYTIMEDURATION);
+                    private ISerializerDeserializer<ADayTimeDuration> dayTimeDurationSerde =
+                            SerializerDeserializerProvider.INSTANCE.getSerializerDeserializer(
+                                    BuiltinType.ADAYTIMEDURATION);
 
                     private AMutableDayTimeDuration aDayTimeDuration = new AMutableDayTimeDuration(0);
 

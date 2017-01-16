@@ -22,11 +22,11 @@ import java.io.DataOutput;
 import java.io.IOException;
 
 import org.apache.asterix.dataflow.data.nontagged.serde.ADoubleSerializerDeserializer;
-import org.apache.asterix.formats.nontagged.AqlSerializerDeserializerProvider;
+import org.apache.asterix.formats.nontagged.SerializerDeserializerProvider;
 import org.apache.asterix.om.base.AMutablePoint;
 import org.apache.asterix.om.base.APoint;
 import org.apache.asterix.runtime.exceptions.TypeMismatchException;
-import org.apache.asterix.om.functions.AsterixBuiltinFunctions;
+import org.apache.asterix.om.functions.BuiltinFunctions;
 import org.apache.asterix.om.functions.IFunctionDescriptor;
 import org.apache.asterix.om.functions.IFunctionDescriptorFactory;
 import org.apache.asterix.om.types.ATypeTag;
@@ -69,7 +69,7 @@ public class CreatePointDescriptor extends AbstractScalarFunctionDynamicDescript
                     private IScalarEvaluator eval1 = args[1].createScalarEvaluator(ctx);
                     private AMutablePoint aPoint = new AMutablePoint(0, 0);
                     @SuppressWarnings("unchecked")
-                    private ISerializerDeserializer<APoint> pointSerde = AqlSerializerDeserializerProvider.INSTANCE
+                    private ISerializerDeserializer<APoint> pointSerde = SerializerDeserializerProvider.INSTANCE
                             .getSerializerDeserializer(BuiltinType.APOINT);
 
                     @Override
@@ -109,7 +109,7 @@ public class CreatePointDescriptor extends AbstractScalarFunctionDynamicDescript
 
     @Override
     public FunctionIdentifier getIdentifier() {
-        return AsterixBuiltinFunctions.CREATE_POINT;
+        return BuiltinFunctions.CREATE_POINT;
     }
 
 }

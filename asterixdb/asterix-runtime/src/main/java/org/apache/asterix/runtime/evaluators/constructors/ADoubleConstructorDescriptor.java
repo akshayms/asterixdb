@@ -21,11 +21,11 @@ package org.apache.asterix.runtime.evaluators.constructors;
 import java.io.DataOutput;
 import java.io.IOException;
 
-import org.apache.asterix.formats.nontagged.AqlBinaryComparatorFactoryProvider;
-import org.apache.asterix.formats.nontagged.AqlSerializerDeserializerProvider;
+import org.apache.asterix.formats.nontagged.BinaryComparatorFactoryProvider;
+import org.apache.asterix.formats.nontagged.SerializerDeserializerProvider;
 import org.apache.asterix.om.base.ADouble;
 import org.apache.asterix.om.base.AMutableDouble;
-import org.apache.asterix.om.functions.AsterixBuiltinFunctions;
+import org.apache.asterix.om.functions.BuiltinFunctions;
 import org.apache.asterix.om.functions.IFunctionDescriptor;
 import org.apache.asterix.om.functions.IFunctionDescriptorFactory;
 import org.apache.asterix.om.types.ATypeTag;
@@ -71,11 +71,11 @@ public class ADoubleConstructorDescriptor extends AbstractScalarFunctionDynamicD
                     private final byte[] POSITIVE_INF = UTF8StringUtil.writeStringToBytes("INF");
                     private final byte[] NEGATIVE_INF = UTF8StringUtil.writeStringToBytes("-INF");
                     private final byte[] NAN = UTF8StringUtil.writeStringToBytes("NaN");
-                    IBinaryComparator utf8BinaryComparator = AqlBinaryComparatorFactoryProvider.UTF8STRING_POINTABLE_INSTANCE
-                            .createBinaryComparator();
+                    IBinaryComparator utf8BinaryComparator =
+                            BinaryComparatorFactoryProvider.UTF8STRING_POINTABLE_INSTANCE.createBinaryComparator();
                     private AMutableDouble aDouble = new AMutableDouble(0);
                     @SuppressWarnings("unchecked")
-                    private ISerializerDeserializer<ADouble> doubleSerde = AqlSerializerDeserializerProvider.INSTANCE
+                    private ISerializerDeserializer<ADouble> doubleSerde = SerializerDeserializerProvider.INSTANCE
                             .getSerializerDeserializer(BuiltinType.ADOUBLE);
 
                     private final UTF8StringPointable utf8Ptr = new UTF8StringPointable();
@@ -121,7 +121,7 @@ public class ADoubleConstructorDescriptor extends AbstractScalarFunctionDynamicD
 
     @Override
     public FunctionIdentifier getIdentifier() {
-        return AsterixBuiltinFunctions.DOUBLE_CONSTRUCTOR;
+        return BuiltinFunctions.DOUBLE_CONSTRUCTOR;
     }
 
 }

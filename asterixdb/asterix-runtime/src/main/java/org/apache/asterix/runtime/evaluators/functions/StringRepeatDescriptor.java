@@ -24,7 +24,7 @@ import java.io.IOException;
 
 import org.apache.asterix.common.exceptions.ErrorCode;
 import org.apache.asterix.common.exceptions.RuntimeDataException;
-import org.apache.asterix.om.functions.AsterixBuiltinFunctions;
+import org.apache.asterix.om.functions.BuiltinFunctions;
 import org.apache.asterix.om.functions.IFunctionDescriptor;
 import org.apache.asterix.om.functions.IFunctionDescriptorFactory;
 import org.apache.asterix.om.types.ATypeTag;
@@ -87,7 +87,7 @@ public class StringRepeatDescriptor extends AbstractScalarFunctionDynamicDescrip
                                 offset);
                         // Checks repeatingTimes. It should be a non-negative value.
                         if (repeatingTimes < 0) {
-                            throw new RuntimeDataException(ErrorCode.ERROR_NEGATIVE_VALUE, getIdentifier(), 1,
+                            throw new RuntimeDataException(ErrorCode.NEGATIVE_VALUE, getIdentifier(), 1,
                                     repeatingTimes);
                         }
 
@@ -125,7 +125,7 @@ public class StringRepeatDescriptor extends AbstractScalarFunctionDynamicDescrip
 
     @Override
     public FunctionIdentifier getIdentifier() {
-        return AsterixBuiltinFunctions.STRING_REPEAT;
+        return BuiltinFunctions.STRING_REPEAT;
     }
 
 }

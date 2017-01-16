@@ -25,6 +25,7 @@ import java.util.List;
 import org.apache.hyracks.api.dataflow.value.IBinaryComparatorFactory;
 import org.apache.hyracks.api.dataflow.value.ILinearizeComparatorFactory;
 import org.apache.hyracks.api.exceptions.HyracksDataException;
+import org.apache.hyracks.api.io.IIOManager;
 import org.apache.hyracks.dataflow.common.data.accessors.ITupleReference;
 import org.apache.hyracks.storage.am.bloomfilter.impls.BloomCalculations;
 import org.apache.hyracks.storage.am.bloomfilter.impls.BloomFilter;
@@ -82,7 +83,8 @@ public class ExternalRTree extends LSMRTree implements ITwoPCIndex {
     private int version = -1;
     private final int fieldCount;
 
-    public ExternalRTree(ITreeIndexFrameFactory rtreeInteriorFrameFactory, ITreeIndexFrameFactory rtreeLeafFrameFactory,
+    public ExternalRTree(IIOManager ioManager, ITreeIndexFrameFactory rtreeInteriorFrameFactory,
+            ITreeIndexFrameFactory rtreeLeafFrameFactory,
             ITreeIndexFrameFactory btreeInteriorFrameFactory, ITreeIndexFrameFactory btreeLeafFrameFactory,
             ILSMIndexFileManager fileNameManager, TreeIndexFactory<RTree> diskRTreeFactory,
             TreeIndexFactory<BTree> diskBTreeFactory, BloomFilterFactory bloomFilterFactory,
@@ -92,12 +94,13 @@ public class ExternalRTree extends LSMRTree implements ITwoPCIndex {
             ILSMMergePolicy mergePolicy, ILSMOperationTracker opTracker, ILSMIOOperationScheduler ioScheduler,
             ILSMIOOperationCallback ioOpCallback, int[] buddyBTreeFields, int version, boolean durable,
             boolean isPointMBR) {
-        super(rtreeInteriorFrameFactory, rtreeLeafFrameFactory, btreeInteriorFrameFactory, btreeLeafFrameFactory,
+        super(ioManager, rtreeInteriorFrameFactory, rtreeLeafFrameFactory, btreeInteriorFrameFactory,
+                btreeLeafFrameFactory,
                 fileNameManager, diskRTreeFactory, diskBTreeFactory, bloomFilterFactory, bloomFilterFalsePositiveRate,
                 diskFileMapProvider, fieldCount, rtreeCmpFactories, btreeCmpFactories, linearizer, comparatorFields,
                 linearizerArray, mergePolicy, opTracker, ioScheduler, ioOpCallback, buddyBTreeFields, durable,
                 isPointMBR);
-        this.secondDiskComponents = new LinkedList<ILSMComponent>();
+        this.secondDiskComponents = new LinkedList<>();
         this.version = version;
         this.fieldCount = fieldCount;
     }
@@ -301,7 +304,7 @@ public class ExternalRTree extends LSMRTree implements ITwoPCIndex {
             search(opCtx, btreeCursor, rtreeSearchPred);
 
             BTree btree = mergedComponent.getBTree();
-            IIndexBulkLoader btreeBulkLoader = btree.createBulkLoader(1.0f, true, 0L, false, true);
+            IIndexBulkLoader btreeBulkLoader = btree.createBulkLoader(1.0f, true, 0L, false);
 
             long numElements = 0L;
             for (int i = 0; i < mergeOp.getMergingComponents().size(); ++i) {
@@ -329,7 +332,7 @@ public class ExternalRTree extends LSMRTree implements ITwoPCIndex {
             btreeBulkLoader.end();
         }
 
-        IIndexBulkLoader bulkLoader = mergedComponent.getRTree().createBulkLoader(1.0f, false, 0L, false, true);
+        IIndexBulkLoader bulkLoader = mergedComponent.getRTree().createBulkLoader(1.0f, false, 0L, false);
         try {
             while (cursor.hasNext()) {
                 cursor.next();
@@ -556,9 +559,9 @@ public class ExternalRTree extends LSMRTree implements ITwoPCIndex {
 
             // Create the three loaders
             rtreeBulkLoader = ((LSMRTreeDiskComponent) component).getRTree().createBulkLoader(fillFactor, verifyInput,
-                    numElementsHint, false, true);
+                    numElementsHint, false);
             btreeBulkLoader = (BTreeBulkLoader) ((LSMRTreeDiskComponent) component).getBTree()
-                    .createBulkLoader(fillFactor, verifyInput, numElementsHint, false, true);
+                    .createBulkLoader(fillFactor, verifyInput, numElementsHint, false);
             int maxBucketsPerElement = BloomCalculations.maxBucketsPerElement(numElementsHint);
             BloomFilterSpecification bloomFilterSpec = BloomCalculations.computeBloomSpec(maxBucketsPerElement,
                     bloomFilterFalsePositiveRate);

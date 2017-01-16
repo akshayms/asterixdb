@@ -24,9 +24,9 @@ import java.util.List;
 import java.util.Map;
 
 import org.apache.asterix.common.exceptions.AsterixException;
-import org.apache.asterix.formats.nontagged.AqlBinaryComparatorFactoryProvider;
-import org.apache.asterix.formats.nontagged.AqlSerializerDeserializerProvider;
-import org.apache.asterix.formats.nontagged.AqlTypeTraitProvider;
+import org.apache.asterix.formats.nontagged.BinaryComparatorFactoryProvider;
+import org.apache.asterix.formats.nontagged.SerializerDeserializerProvider;
+import org.apache.asterix.formats.nontagged.TypeTraitProvider;
 import org.apache.asterix.om.types.BuiltinType;
 import org.apache.asterix.om.types.IAType;
 import org.apache.hyracks.algebricks.runtime.base.IScalarEvaluatorFactory;
@@ -41,7 +41,7 @@ public class IndexingConstants {
     public static final String EXTERNAL_FILE_INDEX_NAME_SUFFIX = "FilesIndex";
     public static final String KEY_INPUT_FORMAT = "input-format";
     public static final String INPUT_FORMAT_RC = "rc-input-format";
-    public static final String INPUT_FORMAT_RC_FULLY_QUALIFIED = "org.apache.hadoop.hive.ql.io.RCFileInputFormat";
+    public static final String INPUT_FORMAT_RC_FULLY_QUALIFIED = "org.apache.asterix.hivecompat.io.RCFileInputFormat";
 
     //Field Types
     public static final IAType FILE_NUMBER_FIELD_TYPE = BuiltinType.AINT32;
@@ -49,11 +49,11 @@ public class IndexingConstants {
     public static final IAType ROW_NUMBER_FIELD_TYPE = BuiltinType.AINT32;
 
     //Comparator Factories
-    private static final IBinaryComparatorFactory fileNumberCompFactory = AqlBinaryComparatorFactoryProvider.INSTANCE
+    private static final IBinaryComparatorFactory fileNumberCompFactory = BinaryComparatorFactoryProvider.INSTANCE
             .getBinaryComparatorFactory(BuiltinType.AINT32, true);
-    private static final IBinaryComparatorFactory recordOffsetCompFactory = AqlBinaryComparatorFactoryProvider.INSTANCE
+    private static final IBinaryComparatorFactory recordOffsetCompFactory = BinaryComparatorFactoryProvider.INSTANCE
             .getBinaryComparatorFactory(BuiltinType.AINT64, true);
-    private static final IBinaryComparatorFactory rowNumberCompFactory = AqlBinaryComparatorFactoryProvider.INSTANCE
+    private static final IBinaryComparatorFactory rowNumberCompFactory = BinaryComparatorFactoryProvider.INSTANCE
             .getBinaryComparatorFactory(BuiltinType.AINT32, true);
 
     private static final IBinaryComparatorFactory[] rCFileRIDComparatorFactories = { fileNumberCompFactory,
@@ -85,16 +85,16 @@ public class IndexingConstants {
 
     static {
 
-        fileNumberSerializerDeserializer = AqlSerializerDeserializerProvider.INSTANCE
+        fileNumberSerializerDeserializer = SerializerDeserializerProvider.INSTANCE
                 .getSerializerDeserializer(FILE_NUMBER_FIELD_TYPE);
-        recordOffsetSerializerDeserializer = AqlSerializerDeserializerProvider.INSTANCE
+        recordOffsetSerializerDeserializer = SerializerDeserializerProvider.INSTANCE
                 .getSerializerDeserializer(RECORD_OFFSET_FIELD_TYPE);
-        rowNumberSerializerDeserializer = AqlSerializerDeserializerProvider.INSTANCE
+        rowNumberSerializerDeserializer = SerializerDeserializerProvider.INSTANCE
                 .getSerializerDeserializer(ROW_NUMBER_FIELD_TYPE);
 
-        fileNumberTypeTraits = AqlTypeTraitProvider.INSTANCE.getTypeTrait(FILE_NUMBER_FIELD_TYPE);
-        recordOffsetTypeTraits = AqlTypeTraitProvider.INSTANCE.getTypeTrait(RECORD_OFFSET_FIELD_TYPE);
-        rowNumberTypeTraits = AqlTypeTraitProvider.INSTANCE.getTypeTrait(ROW_NUMBER_FIELD_TYPE);
+        fileNumberTypeTraits = TypeTraitProvider.INSTANCE.getTypeTrait(FILE_NUMBER_FIELD_TYPE);
+        recordOffsetTypeTraits = TypeTraitProvider.INSTANCE.getTypeTrait(RECORD_OFFSET_FIELD_TYPE);
+        rowNumberTypeTraits = TypeTraitProvider.INSTANCE.getTypeTrait(ROW_NUMBER_FIELD_TYPE);
 
         fileNumberEvalFactory = new TupleFieldEvaluatorFactory(1);
         recordOffsetEvalFactory = new TupleFieldEvaluatorFactory(2);

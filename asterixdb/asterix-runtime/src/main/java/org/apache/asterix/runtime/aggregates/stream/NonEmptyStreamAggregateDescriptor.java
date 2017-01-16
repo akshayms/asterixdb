@@ -18,9 +18,9 @@
  */
 package org.apache.asterix.runtime.aggregates.stream;
 
-import org.apache.asterix.formats.nontagged.AqlSerializerDeserializerProvider;
+import org.apache.asterix.formats.nontagged.SerializerDeserializerProvider;
 import org.apache.asterix.om.base.ABoolean;
-import org.apache.asterix.om.functions.AsterixBuiltinFunctions;
+import org.apache.asterix.om.functions.BuiltinFunctions;
 import org.apache.asterix.om.functions.IFunctionDescriptor;
 import org.apache.asterix.om.functions.IFunctionDescriptorFactory;
 import org.apache.asterix.om.types.BuiltinType;
@@ -60,7 +60,7 @@ public class NonEmptyStreamAggregateDescriptor extends AbstractAggregateFunction
 
                     private ArrayBackedValueStorage resultStorage = new ArrayBackedValueStorage();
                     @SuppressWarnings("rawtypes")
-                    private ISerializerDeserializer serde = AqlSerializerDeserializerProvider.INSTANCE
+                    private ISerializerDeserializer serde = SerializerDeserializerProvider.INSTANCE
                             .getSerializerDeserializer(BuiltinType.ABOOLEAN);
 
                     boolean res = false;
@@ -95,7 +95,7 @@ public class NonEmptyStreamAggregateDescriptor extends AbstractAggregateFunction
 
     @Override
     public FunctionIdentifier getIdentifier() {
-        return AsterixBuiltinFunctions.NON_EMPTY_STREAM;
+        return BuiltinFunctions.NON_EMPTY_STREAM;
     }
 
 }

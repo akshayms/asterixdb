@@ -25,14 +25,14 @@ import org.apache.asterix.common.exceptions.AsterixException;
 import org.apache.asterix.dataflow.data.nontagged.serde.AFloatSerializerDeserializer;
 import org.apache.asterix.dataflow.data.nontagged.serde.AOrderedListSerializerDeserializer;
 import org.apache.asterix.dataflow.data.nontagged.serde.AUnorderedListSerializerDeserializer;
-import org.apache.asterix.formats.nontagged.AqlSerializerDeserializerProvider;
+import org.apache.asterix.formats.nontagged.SerializerDeserializerProvider;
 import org.apache.asterix.fuzzyjoin.IntArray;
 import org.apache.asterix.fuzzyjoin.similarity.PartialIntersect;
 import org.apache.asterix.fuzzyjoin.similarity.SimilarityFiltersJaccard;
 import org.apache.asterix.fuzzyjoin.similarity.SimilarityMetric;
 import org.apache.asterix.om.base.AFloat;
 import org.apache.asterix.om.base.AMutableFloat;
-import org.apache.asterix.om.functions.AsterixBuiltinFunctions;
+import org.apache.asterix.om.functions.BuiltinFunctions;
 import org.apache.asterix.om.types.ATypeTag;
 import org.apache.asterix.om.types.BuiltinType;
 import org.apache.asterix.om.types.hierachy.ATypeHierarchy;
@@ -72,7 +72,7 @@ public class SimilarityJaccardPrefixEvaluator implements IScalarEvaluator {
     // result
     protected final AMutableFloat res = new AMutableFloat(0);
     @SuppressWarnings("unchecked")
-    protected final ISerializerDeserializer<AFloat> reusSerde = AqlSerializerDeserializerProvider.INSTANCE
+    protected final ISerializerDeserializer<AFloat> reusSerde = SerializerDeserializerProvider.INSTANCE
             .getSerializerDeserializer(BuiltinType.AFLOAT);
 
     public SimilarityJaccardPrefixEvaluator(IScalarEvaluatorFactory[] args, IHyracksTaskContext context)
@@ -100,10 +100,10 @@ public class SimilarityJaccardPrefixEvaluator implements IScalarEvaluator {
         }
 
         evalLen1.evaluate(tuple, inputVal);
-        int length1 = ATypeHierarchy.getIntegerValue(AsterixBuiltinFunctions.SIMILARITY_JACCARD.getName(), 0,
+        int length1 = ATypeHierarchy.getIntegerValue(BuiltinFunctions.SIMILARITY_JACCARD.getName(), 0,
                 inputVal.getByteArray(), inputVal.getStartOffset());
         evalLen2.evaluate(tuple, inputVal);
-        int length2 = ATypeHierarchy.getIntegerValue(AsterixBuiltinFunctions.SIMILARITY_JACCARD.getName(), 2,
+        int length2 = ATypeHierarchy.getIntegerValue(BuiltinFunctions.SIMILARITY_JACCARD.getName(), 2,
                 inputVal.getByteArray(), inputVal.getStartOffset());
 
         //
@@ -120,7 +120,7 @@ public class SimilarityJaccardPrefixEvaluator implements IScalarEvaluator {
             int startOffset = inputVal.getStartOffset();
             if (serList[startOffset] != ATypeTag.SERIALIZED_ORDEREDLIST_TYPE_TAG
                     && serList[startOffset] != ATypeTag.SERIALIZED_UNORDEREDLIST_TYPE_TAG) {
-                throw new TypeMismatchException(AsterixBuiltinFunctions.SIMILARITY_JACCARD, 1, serList[startOffset],
+                throw new TypeMismatchException(BuiltinFunctions.SIMILARITY_JACCARD, 1, serList[startOffset],
                         ATypeTag.SERIALIZED_ORDEREDLIST_TYPE_TAG, ATypeTag.SERIALIZED_UNORDEREDLIST_TYPE_TAG);
             }
 
@@ -138,7 +138,7 @@ public class SimilarityJaccardPrefixEvaluator implements IScalarEvaluator {
                         throw new HyracksDataException(e);
                     }
                     token = ATypeHierarchy.getIntegerValueWithDifferentTypeTagPosition(
-                            AsterixBuiltinFunctions.SIMILARITY_JACCARD.getName(), 1, serList, itemOffset,
+                            BuiltinFunctions.SIMILARITY_JACCARD.getName(), 1, serList, itemOffset,
                                 startOffset + 1);
                     tokens1.add(token);
                 }
@@ -157,7 +157,7 @@ public class SimilarityJaccardPrefixEvaluator implements IScalarEvaluator {
                     }
 
                     token = ATypeHierarchy.getIntegerValueWithDifferentTypeTagPosition(
-                            AsterixBuiltinFunctions.SIMILARITY_JACCARD.getName(), 1, serList, itemOffset,
+                            BuiltinFunctions.SIMILARITY_JACCARD.getName(), 1, serList, itemOffset,
                                 startOffset + 1);
                     tokens1.add(token);
                 }
@@ -175,7 +175,7 @@ public class SimilarityJaccardPrefixEvaluator implements IScalarEvaluator {
             startOffset = inputVal.getStartOffset();
             if (serList[startOffset] != ATypeTag.SERIALIZED_ORDEREDLIST_TYPE_TAG
                     && serList[startOffset] != ATypeTag.SERIALIZED_UNORDEREDLIST_TYPE_TAG) {
-                throw new TypeMismatchException(AsterixBuiltinFunctions.SIMILARITY_JACCARD, 3, serList[startOffset],
+                throw new TypeMismatchException(BuiltinFunctions.SIMILARITY_JACCARD, 3, serList[startOffset],
                         ATypeTag.SERIALIZED_ORDEREDLIST_TYPE_TAG, ATypeTag.SERIALIZED_UNORDEREDLIST_TYPE_TAG);
             }
 
@@ -194,7 +194,7 @@ public class SimilarityJaccardPrefixEvaluator implements IScalarEvaluator {
                         throw new HyracksDataException(e);
                     }
                     token = ATypeHierarchy.getIntegerValueWithDifferentTypeTagPosition(
-                            AsterixBuiltinFunctions.SIMILARITY_JACCARD.getName(), 3, serList, itemOffset,
+                            BuiltinFunctions.SIMILARITY_JACCARD.getName(), 3, serList, itemOffset,
                                 startOffset + 1);
                     tokens2.add(token);
                 }
@@ -212,7 +212,7 @@ public class SimilarityJaccardPrefixEvaluator implements IScalarEvaluator {
                         throw new HyracksDataException(e);
                     }
                     token = ATypeHierarchy.getIntegerValueWithDifferentTypeTagPosition(
-                            AsterixBuiltinFunctions.SIMILARITY_JACCARD.getName(), 3, serList, itemOffset,
+                            BuiltinFunctions.SIMILARITY_JACCARD.getName(), 3, serList, itemOffset,
                                 startOffset + 1);
                     tokens2.add(token);
                 }
@@ -224,7 +224,7 @@ public class SimilarityJaccardPrefixEvaluator implements IScalarEvaluator {
 
             // -- - token prefix - --
             evalTokenPrefix.evaluate(tuple, inputVal);
-            int tokenPrefix = ATypeHierarchy.getIntegerValue(AsterixBuiltinFunctions.SIMILARITY_JACCARD.getName(), 4,
+            int tokenPrefix = ATypeHierarchy.getIntegerValue(BuiltinFunctions.SIMILARITY_JACCARD.getName(), 4,
                     inputVal.getByteArray(), inputVal.getStartOffset());
 
             //

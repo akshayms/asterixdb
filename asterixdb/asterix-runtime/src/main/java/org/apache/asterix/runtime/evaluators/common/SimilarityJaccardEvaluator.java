@@ -24,16 +24,15 @@ import java.util.Arrays;
 
 import org.apache.asterix.dataflow.data.nontagged.comparators.ListItemBinaryComparatorFactory;
 import org.apache.asterix.dataflow.data.nontagged.hash.ListItemBinaryHashFunctionFactory;
-import org.apache.asterix.formats.nontagged.AqlSerializerDeserializerProvider;
+import org.apache.asterix.formats.nontagged.SerializerDeserializerProvider;
 import org.apache.asterix.om.base.AFloat;
 import org.apache.asterix.om.base.AMutableFloat;
-import org.apache.asterix.runtime.exceptions.TypeMismatchException;
-import org.apache.asterix.om.functions.AsterixBuiltinFunctions;
+import org.apache.asterix.om.functions.BuiltinFunctions;
 import org.apache.asterix.om.types.ATypeTag;
 import org.apache.asterix.om.types.BuiltinType;
 import org.apache.asterix.om.types.EnumDeserializer;
 import org.apache.asterix.runtime.evaluators.functions.BinaryHashMap;
-import org.apache.asterix.runtime.evaluators.functions.BinaryHashMap.BinaryEntry;
+import org.apache.asterix.runtime.exceptions.TypeMismatchException;
 import org.apache.hyracks.algebricks.runtime.base.IScalarEvaluator;
 import org.apache.hyracks.algebricks.runtime.base.IScalarEvaluatorFactory;
 import org.apache.hyracks.api.context.IHyracksTaskContext;
@@ -45,16 +44,17 @@ import org.apache.hyracks.data.std.api.IPointable;
 import org.apache.hyracks.data.std.primitive.IntegerPointable;
 import org.apache.hyracks.data.std.primitive.VoidPointable;
 import org.apache.hyracks.data.std.util.ArrayBackedValueStorage;
+import org.apache.hyracks.data.std.util.BinaryEntry;
 import org.apache.hyracks.dataflow.common.data.accessors.IFrameTupleReference;
 
 public class SimilarityJaccardEvaluator implements IScalarEvaluator {
 
     // Parameters for hash table.
-    protected final int TABLE_SIZE = 100;
-    protected final int TABLE_FRAME_SIZE = 32768;
+    protected static final int MIN_TABLE_SIZE = 100;
+    protected static final int TABLE_FRAME_SIZE = 32768;
 
     // Assuming type indicator in serde format.
-    protected final int TYPE_INDICATOR_SIZE = 1;
+    protected static final int TYPE_INDICATOR_SIZE = 1;
 
     protected final ArrayBackedValueStorage resultStorage = new ArrayBackedValueStorage();
     protected final DataOutput out = resultStorage.getDataOutput();
@@ -63,17 +63,17 @@ public class SimilarityJaccardEvaluator implements IScalarEvaluator {
     protected final IScalarEvaluator firstOrdListEval;
     protected final IScalarEvaluator secondOrdListEval;
 
-    protected final AsterixOrderedListIterator fstOrdListIter = new AsterixOrderedListIterator();
-    protected final AsterixOrderedListIterator sndOrdListIter = new AsterixOrderedListIterator();
-    protected final AsterixUnorderedListIterator fstUnordListIter = new AsterixUnorderedListIterator();
-    protected final AsterixUnorderedListIterator sndUnordListIter = new AsterixUnorderedListIterator();
+    protected final OrderedListIterator fstOrdListIter = new OrderedListIterator();
+    protected final OrderedListIterator sndOrdListIter = new OrderedListIterator();
+    protected final UnorderedListIterator fstUnordListIter = new UnorderedListIterator();
+    protected final UnorderedListIterator sndUnordListIter = new UnorderedListIterator();
 
     protected AbstractAsterixListIterator firstListIter;
     protected AbstractAsterixListIterator secondListIter;
 
     protected final AMutableFloat aFloat = new AMutableFloat(0);
     @SuppressWarnings("unchecked")
-    protected final ISerializerDeserializer<AFloat> floatSerde = AqlSerializerDeserializerProvider.INSTANCE
+    protected final ISerializerDeserializer<AFloat> floatSerde = SerializerDeserializerProvider.INSTANCE
             .getSerializerDeserializer(BuiltinType.AFLOAT);
 
     protected ATypeTag firstTypeTag;
@@ -88,6 +88,8 @@ public class SimilarityJaccardEvaluator implements IScalarEvaluator {
 
     // Ignore case for strings. Defaults to true.
     protected final boolean ignoreCase = true;
+
+    protected int hashTableSize = MIN_TABLE_SIZE;
 
     public SimilarityJaccardEvaluator(IScalarEvaluatorFactory[] args, IHyracksTaskContext context)
             throws HyracksDataException {
@@ -140,6 +142,10 @@ public class SimilarityJaccardEvaluator implements IScalarEvaluator {
         if (firstListIter.size() == 0 || secondListIter.size() == 0) {
             return false;
         }
+
+        // Set the size of the table dynamically
+        hashTableSize = Math.max(Math.max(firstListIter.size(), secondListIter.size()), MIN_TABLE_SIZE);
+
         // TODO: Check item types are compatible.
         return true;
     }
@@ -171,7 +177,7 @@ public class SimilarityJaccardEvaluator implements IScalarEvaluator {
     protected void buildHashMap(AbstractAsterixListIterator buildIter) throws HyracksDataException {
         // Build phase: Add items into hash map, starting with first list.
         // Value in map is a pair of integers. Set first integer to 1.
-        IntegerPointable.setInteger(valEntry.buf, 0, 1);
+        IntegerPointable.setInteger(valEntry.getBuf(), 0, 1);
         while (buildIter.hasNext()) {
             byte[] buf = buildIter.getData();
             int off = buildIter.getPos();
@@ -180,8 +186,8 @@ public class SimilarityJaccardEvaluator implements IScalarEvaluator {
             BinaryEntry entry = hashMap.put(keyEntry, valEntry);
             if (entry != null) {
                 // Increment value.
-                int firstValInt = IntegerPointable.getInteger(entry.buf, entry.off);
-                IntegerPointable.setInteger(entry.buf, entry.off, firstValInt + 1);
+                int firstValInt = IntegerPointable.getInteger(entry.getBuf(), entry.getOffset());
+                IntegerPointable.setInteger(entry.getBuf(), entry.getOffset(), firstValInt + 1);
             }
             buildIter.next();
         }
@@ -199,18 +205,18 @@ public class SimilarityJaccardEvaluator implements IScalarEvaluator {
             BinaryEntry entry = hashMap.get(keyEntry);
             if (entry != null) {
                 // Increment second value.
-                int firstValInt = IntegerPointable.getInteger(entry.buf, entry.off);
+                int firstValInt = IntegerPointable.getInteger(entry.getBuf(), entry.getOffset());
                 // Irrelevant for the intersection size.
                 if (firstValInt == 0) {
                     continue;
                 }
-                int secondValInt = IntegerPointable.getInteger(entry.buf, entry.off + 4);
+                int secondValInt = IntegerPointable.getInteger(entry.getBuf(), entry.getOffset() + 4);
                 // Subtract old min value.
                 intersectionSize -= (firstValInt < secondValInt) ? firstValInt : secondValInt;
                 secondValInt++;
                 // Add new min value.
                 intersectionSize += (firstValInt < secondValInt) ? firstValInt : secondValInt;
-                IntegerPointable.setInteger(entry.buf, entry.off + 4, secondValInt);
+                IntegerPointable.setInteger(entry.getBuf(), entry.getOffset() + 4, secondValInt);
             }
             probeIter.next();
         }
@@ -229,7 +235,7 @@ public class SimilarityJaccardEvaluator implements IScalarEvaluator {
                 .createBinaryHashFunction(probeItemTypeTag, ignoreCase);
         IBinaryComparator cmp = ListItemBinaryComparatorFactory.INSTANCE.createBinaryComparator(buildItemTypeTag,
                 probeItemTypeTag, ignoreCase);
-        hashMap = new BinaryHashMap(TABLE_SIZE, TABLE_FRAME_SIZE, putHashFunc, getHashFunc, cmp);
+        hashMap = new BinaryHashMap(hashTableSize, TABLE_FRAME_SIZE, putHashFunc, getHashFunc, cmp);
     }
 
     protected boolean checkArgTypes(ATypeTag typeTag1, ATypeTag typeTag2) throws HyracksDataException {
@@ -243,7 +249,7 @@ public class SimilarityJaccardEvaluator implements IScalarEvaluator {
                 break;
             }
             default: {
-                throw new TypeMismatchException(AsterixBuiltinFunctions.SIMILARITY_JACCARD, 0, typeTag1.serialize(),
+                throw new TypeMismatchException(BuiltinFunctions.SIMILARITY_JACCARD, 0, typeTag1.serialize(),
                         ATypeTag.SERIALIZED_ORDEREDLIST_TYPE_TAG, ATypeTag.SERIALIZED_UNORDEREDLIST_TYPE_TAG);
             }
         }
@@ -257,7 +263,7 @@ public class SimilarityJaccardEvaluator implements IScalarEvaluator {
                 break;
             }
             default: {
-                throw new TypeMismatchException(AsterixBuiltinFunctions.SIMILARITY_JACCARD, 1, typeTag2.serialize(),
+                throw new TypeMismatchException(BuiltinFunctions.SIMILARITY_JACCARD, 1, typeTag2.serialize(),
                         ATypeTag.SERIALIZED_ORDEREDLIST_TYPE_TAG, ATypeTag.SERIALIZED_UNORDEREDLIST_TYPE_TAG);
             }
         }

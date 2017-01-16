@@ -24,29 +24,32 @@ import java.util.List;
 import java.util.Map;
 
 import org.apache.asterix.app.external.ExternalIndexingOperations;
-import org.apache.asterix.common.config.AsterixStorageProperties;
+import org.apache.asterix.common.config.StorageProperties;
 import org.apache.asterix.common.config.DatasetConfig.DatasetType;
 import org.apache.asterix.common.config.DatasetConfig.ExternalFilePendingOp;
 import org.apache.asterix.common.config.DatasetConfig.IndexType;
-import org.apache.asterix.common.config.IAsterixPropertiesProvider;
+import org.apache.asterix.common.config.IPropertiesProvider;
 import org.apache.asterix.common.context.AsterixVirtualBufferCacheProvider;
 import org.apache.asterix.common.context.ITransactionSubsystemProvider;
 import org.apache.asterix.common.context.TransactionSubsystemProvider;
+import org.apache.asterix.common.dataflow.LSMIndexUtil;
 import org.apache.asterix.common.exceptions.AsterixException;
 import org.apache.asterix.common.ioopcallbacks.LSMBTreeIOOperationCallbackFactory;
-import org.apache.asterix.runtime.util.AsterixRuntimeComponentsProvider;
+import org.apache.asterix.metadata.declared.MetadataProvider;
+import org.apache.asterix.runtime.util.AppContextInfo;
+import org.apache.asterix.runtime.util.RuntimeComponentsProvider;
 import org.apache.asterix.common.transactions.IRecoveryManager.ResourceType;
 import org.apache.asterix.common.transactions.JobId;
 import org.apache.asterix.external.indexing.ExternalFile;
 import org.apache.asterix.external.indexing.IndexingConstants;
 import org.apache.asterix.external.operators.ExternalDataScanOperatorDescriptor;
 import org.apache.asterix.external.operators.ExternalIndexBulkModifyOperatorDescriptor;
-import org.apache.asterix.formats.nontagged.AqlBinaryBooleanInspectorImpl;
-import org.apache.asterix.formats.nontagged.AqlBinaryComparatorFactoryProvider;
-import org.apache.asterix.formats.nontagged.AqlSerializerDeserializerProvider;
-import org.apache.asterix.formats.nontagged.AqlTypeTraitProvider;
+import org.apache.asterix.formats.nontagged.BinaryBooleanInspector;
+import org.apache.asterix.formats.nontagged.BinaryComparatorFactoryProvider;
+import org.apache.asterix.formats.nontagged.SerializerDeserializerProvider;
+import org.apache.asterix.formats.nontagged.TypeTraitProvider;
 import org.apache.asterix.metadata.MetadataException;
-import org.apache.asterix.metadata.declared.AqlMetadataProvider;
+import org.apache.asterix.metadata.declared.MetadataProvider;
 import org.apache.asterix.metadata.entities.Dataset;
 import org.apache.asterix.metadata.entities.InternalDatasetDetails;
 import org.apache.asterix.metadata.utils.DatasetUtils;
@@ -57,7 +60,6 @@ import org.apache.asterix.runtime.evaluators.functions.CastTypeDescriptor;
 import org.apache.asterix.runtime.evaluators.functions.IsUnknownDescriptor;
 import org.apache.asterix.runtime.evaluators.functions.NotDescriptor;
 import org.apache.asterix.runtime.job.listener.JobEventListenerFactory;
-import org.apache.asterix.runtime.util.AsterixAppContextInfo;
 import org.apache.asterix.transaction.management.opcallbacks.PrimaryIndexInstantSearchOperationCallbackFactory;
 import org.apache.asterix.transaction.management.opcallbacks.PrimaryIndexOperationTrackerProvider;
 import org.apache.asterix.transaction.management.service.transaction.JobIdFactory;
@@ -103,7 +105,7 @@ public abstract class SecondaryIndexOperationsHelper {
 
     protected int numPrimaryKeys;
     protected int numSecondaryKeys;
-    protected AqlMetadataProvider metadataProvider;
+    protected MetadataProvider metadataProvider;
     protected String dataverseName;
     protected String datasetName;
     protected Dataset dataset;
@@ -130,7 +132,7 @@ public abstract class SecondaryIndexOperationsHelper {
     protected RecordDescriptor secondaryRecDesc;
     protected IScalarEvaluatorFactory[] secondaryFieldAccessEvalFactories;
 
-    protected IAsterixPropertiesProvider propertiesProvider;
+    protected IPropertiesProvider propertiesProvider;
     protected ILSMMergePolicyFactory mergePolicyFactory;
     protected Map<String, String> mergePolicyFactoryProperties;
     protected RecordDescriptor enforcedRecDesc;
@@ -148,17 +150,17 @@ public abstract class SecondaryIndexOperationsHelper {
 
     // Prevent public construction. Should be created via createIndexCreator().
     protected SecondaryIndexOperationsHelper(PhysicalOptimizationConfig physOptConf,
-            IAsterixPropertiesProvider propertiesProvider) {
+            IPropertiesProvider propertiesProvider) {
         this.physOptConf = physOptConf;
         this.propertiesProvider = propertiesProvider;
     }
 
     public static SecondaryIndexOperationsHelper createIndexOperationsHelper(IndexType indexType, String dataverseName,
             String datasetName, String indexName, List<List<String>> secondaryKeyFields, List<IAType> secondaryKeyTypes,
-            boolean isEnforced, int gramLength, AqlMetadataProvider metadataProvider,
+            boolean isEnforced, int gramLength, MetadataProvider metadataProvider,
             PhysicalOptimizationConfig physOptConf, ARecordType recType, ARecordType metaType,
             List<Integer> keySourceIndicators, ARecordType enforcedType) throws AsterixException, AlgebricksException {
-        IAsterixPropertiesProvider asterixPropertiesProvider = AsterixAppContextInfo.INSTANCE;
+        IPropertiesProvider asterixPropertiesProvider = AppContextInfo.INSTANCE;
         SecondaryIndexOperationsHelper indexOperationsHelper = null;
         switch (indexType) {
             case BTREE: {
@@ -194,7 +196,7 @@ public abstract class SecondaryIndexOperationsHelper {
     public abstract JobSpecification buildCompactJobSpec() throws AsterixException, AlgebricksException;
 
     protected void init(IndexType indexType, String dvn, String dsn, String in, List<List<String>> secondaryKeyFields,
-            List<IAType> secondaryKeyTypes, boolean isEnforced, int gramLength, AqlMetadataProvider metadataProvider,
+            List<IAType> secondaryKeyTypes, boolean isEnforced, int gramLength, MetadataProvider metadataProvider,
             ARecordType aRecType, ARecordType metaType, List<Integer> keySourceIndicators, ARecordType enforcedType)
             throws AsterixException, AlgebricksException {
         this.metadataProvider = metadataProvider;
@@ -211,9 +213,9 @@ public abstract class SecondaryIndexOperationsHelper {
         this.metaType = metaType;
         this.keySourceIndicators = keySourceIndicators;
         enforcedItemType = enforcedType;
-        payloadSerde = AqlSerializerDeserializerProvider.INSTANCE.getSerializerDeserializer(itemType);
+        payloadSerde = SerializerDeserializerProvider.INSTANCE.getSerializerDeserializer(itemType);
         metaSerde = metaType == null ? null
-                : AqlSerializerDeserializerProvider.INSTANCE.getSerializerDeserializer(metaType);
+                : SerializerDeserializerProvider.INSTANCE.getSerializerDeserializer(metaType);
         numSecondaryKeys = secondaryKeyFields.size();
         Pair<IFileSplitProvider, AlgebricksPartitionConstraint> secondarySplitsAndConstraint = metadataProvider
                 .splitProviderAndPartitionConstraintsForDataset(dataverseName, datasetName, secondaryIndexName, temp);
@@ -265,8 +267,8 @@ public abstract class SecondaryIndexOperationsHelper {
         }
 
         IAType type = itemType.getSubFieldType(filterFieldName);
-        filterCmpFactories[0] = AqlBinaryComparatorFactoryProvider.INSTANCE.getBinaryComparatorFactory(type, true);
-        filterTypeTraits[0] = AqlTypeTraitProvider.INSTANCE.getTypeTrait(type);
+        filterCmpFactories[0] = BinaryComparatorFactoryProvider.INSTANCE.getBinaryComparatorFactory(type, true);
+        filterTypeTraits[0] = TypeTraitProvider.INSTANCE.getTypeTrait(type);
         secondaryFilterFields[0] = getNumSecondaryKeys() + numPrimaryKeys;
         primaryFilterFields[0] = numPrimaryKeys + 1;
     }
@@ -292,22 +294,22 @@ public abstract class SecondaryIndexOperationsHelper {
                             : metaType.getSubFieldType(partitioningKeys.get(i));
             primaryRecFields[i] = serdeProvider.getSerializerDeserializer(keyType);
             primaryComparatorFactories[i] =
-                    AqlBinaryComparatorFactoryProvider.INSTANCE.getBinaryComparatorFactory(keyType, true);
-            primaryTypeTraits[i] = AqlTypeTraitProvider.INSTANCE.getTypeTrait(keyType);
+                    BinaryComparatorFactoryProvider.INSTANCE.getBinaryComparatorFactory(keyType, true);
+            primaryTypeTraits[i] = TypeTraitProvider.INSTANCE.getTypeTrait(keyType);
             primaryBloomFilterKeyFields[i] = i;
         }
         primaryRecFields[numPrimaryKeys] = payloadSerde;
-        primaryTypeTraits[numPrimaryKeys] = AqlTypeTraitProvider.INSTANCE.getTypeTrait(itemType);
+        primaryTypeTraits[numPrimaryKeys] = TypeTraitProvider.INSTANCE.getTypeTrait(itemType);
         if (dataset.hasMetaPart()) {
             primaryRecFields[numPrimaryKeys + 1] = payloadSerde;
-            primaryTypeTraits[numPrimaryKeys + 1] = AqlTypeTraitProvider.INSTANCE.getTypeTrait(itemType);
+            primaryTypeTraits[numPrimaryKeys + 1] = TypeTraitProvider.INSTANCE.getTypeTrait(itemType);
         }
         primaryRecDesc = new RecordDescriptor(primaryRecFields, primaryTypeTraits);
     }
 
     protected abstract void setSecondaryRecDescAndComparators(IndexType indexType,
             List<List<String>> secondaryKeyFields, List<IAType> secondaryKeyTypes, int gramLength,
-            AqlMetadataProvider metadataProvider) throws AlgebricksException, AsterixException;
+            MetadataProvider metadataProvider) throws AlgebricksException, AsterixException;
 
     protected AbstractOperatorDescriptor createDummyKeyProviderOp(JobSpecification spec)
             throws AsterixException, AlgebricksException {
@@ -348,18 +350,19 @@ public abstract class SecondaryIndexOperationsHelper {
         ISearchOperationCallbackFactory searchCallbackFactory = temp ? NoOpOperationCallbackFactory.INSTANCE
                 : new PrimaryIndexInstantSearchOperationCallbackFactory(jobId, dataset.getDatasetId(),
                         primaryBloomFilterKeyFields, txnSubsystemProvider, ResourceType.LSM_BTREE);
-        AsterixStorageProperties storageProperties = propertiesProvider.getStorageProperties();
+        StorageProperties storageProperties = propertiesProvider.getStorageProperties();
         BTreeSearchOperatorDescriptor primarySearchOp = new BTreeSearchOperatorDescriptor(spec, primaryRecDesc,
-                AsterixRuntimeComponentsProvider.RUNTIME_PROVIDER, AsterixRuntimeComponentsProvider.RUNTIME_PROVIDER,
+                RuntimeComponentsProvider.RUNTIME_PROVIDER, RuntimeComponentsProvider.RUNTIME_PROVIDER,
                 primaryFileSplitProvider, primaryRecDesc.getTypeTraits(), primaryComparatorFactories,
                 primaryBloomFilterKeyFields, lowKeyFields, highKeyFields, true, true,
                 new LSMBTreeDataflowHelperFactory(new AsterixVirtualBufferCacheProvider(dataset.getDatasetId()),
                         mergePolicyFactory, mergePolicyFactoryProperties,
                         new PrimaryIndexOperationTrackerProvider(dataset.getDatasetId()),
-                        AsterixRuntimeComponentsProvider.RUNTIME_PROVIDER, LSMBTreeIOOperationCallbackFactory.INSTANCE,
+                        RuntimeComponentsProvider.RUNTIME_PROVIDER, LSMBTreeIOOperationCallbackFactory.INSTANCE,
                         storageProperties.getBloomFilterFalsePositiveRate(), true, filterTypeTraits, filterCmpFactories,
                         primaryBTreeFields, primaryFilterFields, !temp),
-                false, false, null, searchCallbackFactory, null, null);
+                false, false, null, searchCallbackFactory, null, null, LSMIndexUtil
+                        .getMetadataPageManagerFactory());
 
         AlgebricksPartitionConstraintHelper.setPartitionConstraintInJobSpec(spec, primarySearchOp,
                 primaryPartitionConstraint);
@@ -445,10 +448,11 @@ public abstract class SecondaryIndexOperationsHelper {
             int[] fieldPermutation, IIndexDataflowHelperFactory dataflowHelperFactory, float fillFactor)
             throws MetadataException, AlgebricksException {
         TreeIndexBulkLoadOperatorDescriptor treeIndexBulkLoadOp = new TreeIndexBulkLoadOperatorDescriptor(spec,
-                secondaryRecDesc, AsterixRuntimeComponentsProvider.RUNTIME_PROVIDER,
-                AsterixRuntimeComponentsProvider.RUNTIME_PROVIDER, secondaryFileSplitProvider,
+                secondaryRecDesc, RuntimeComponentsProvider.RUNTIME_PROVIDER,
+                RuntimeComponentsProvider.RUNTIME_PROVIDER, secondaryFileSplitProvider,
                 secondaryRecDesc.getTypeTraits(), secondaryComparatorFactories, secondaryBloomFilterKeyFields,
-                fieldPermutation, fillFactor, false, numElementsHint, false, dataflowHelperFactory);
+                fieldPermutation, fillFactor, false, numElementsHint, false, dataflowHelperFactory, LSMIndexUtil
+                        .getMetadataPageManagerFactory());
         AlgebricksPartitionConstraintHelper.setPartitionConstraintInJobSpec(spec, treeIndexBulkLoadOp,
                 secondaryPartitionConstraint);
         return treeIndexBulkLoadOp;
@@ -478,7 +482,7 @@ public abstract class SecondaryIndexOperationsHelper {
             selectCond = andArgsEvalFactories[0];
         }
         StreamSelectRuntimeFactory select = new StreamSelectRuntimeFactory(selectCond, null,
-                AqlBinaryBooleanInspectorImpl.FACTORY, false, -1, null);
+                BinaryBooleanInspector.FACTORY, false, -1, null);
         AlgebricksMetaOperatorDescriptor asterixSelectOp = new AlgebricksMetaOperatorDescriptor(spec, 1, 1,
                 new IPushRuntimeFactory[] { select }, new RecordDescriptor[] { secondaryRecDesc });
         AlgebricksPartitionConstraintHelper.setPartitionConstraintInJobSpec(spec, asterixSelectOp,
@@ -494,7 +498,7 @@ public abstract class SecondaryIndexOperationsHelper {
         ITypeTraits[] typeTraits = new ITypeTraits[1 + numPrimaryKeys];
         // payload serde and type traits for the record slot
         serdes[0] = payloadSerde;
-        typeTraits[0] = AqlTypeTraitProvider.INSTANCE.getTypeTrait(itemType);
+        typeTraits[0] = TypeTraitProvider.INSTANCE.getTypeTrait(itemType);
         //  serdes and type traits for rid fields
         for (int i = 1; i < serdes.length; i++) {
             serdes[i] = IndexingConstants.getSerializerDeserializer(i - 1);
@@ -561,10 +565,11 @@ public abstract class SecondaryIndexOperationsHelper {
             }
         }
         ExternalIndexBulkModifyOperatorDescriptor treeIndexBulkLoadOp = new ExternalIndexBulkModifyOperatorDescriptor(
-                spec, AsterixRuntimeComponentsProvider.RUNTIME_PROVIDER,
-                AsterixRuntimeComponentsProvider.RUNTIME_PROVIDER, secondaryFileSplitProvider, secondaryTypeTraits,
+                spec, RuntimeComponentsProvider.RUNTIME_PROVIDER,
+                RuntimeComponentsProvider.RUNTIME_PROVIDER, secondaryFileSplitProvider, secondaryTypeTraits,
                 secondaryComparatorFactories, secondaryBloomFilterKeyFields, dataflowHelperFactory,
-                NoOpOperationCallbackFactory.INSTANCE, deletedFiles, fieldPermutation, fillFactor, numElementsHint);
+                NoOpOperationCallbackFactory.INSTANCE, deletedFiles, fieldPermutation, fillFactor, numElementsHint,
+                LSMIndexUtil.getMetadataPageManagerFactory());
         AlgebricksPartitionConstraintHelper.setPartitionConstraintInJobSpec(spec, treeIndexBulkLoadOp,
                 secondaryPartitionConstraint);
         return treeIndexBulkLoadOp;

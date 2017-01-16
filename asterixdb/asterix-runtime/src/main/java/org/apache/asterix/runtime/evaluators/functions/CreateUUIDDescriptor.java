@@ -20,10 +20,10 @@ package org.apache.asterix.runtime.evaluators.functions;
 
 import java.io.DataOutput;
 
-import org.apache.asterix.formats.nontagged.AqlSerializerDeserializerProvider;
+import org.apache.asterix.formats.nontagged.SerializerDeserializerProvider;
 import org.apache.asterix.om.base.AGeneratedUUID;
 import org.apache.asterix.om.base.AUUID;
-import org.apache.asterix.om.functions.AsterixBuiltinFunctions;
+import org.apache.asterix.om.functions.BuiltinFunctions;
 import org.apache.asterix.om.functions.IFunctionDescriptor;
 import org.apache.asterix.om.functions.IFunctionDescriptorFactory;
 import org.apache.asterix.om.types.BuiltinType;
@@ -56,7 +56,7 @@ public class CreateUUIDDescriptor extends AbstractScalarFunctionDynamicDescripto
             private static final long serialVersionUID = 1L;
 
             @SuppressWarnings("unchecked")
-            private final ISerializerDeserializer<AUUID> uuidSerDe = AqlSerializerDeserializerProvider.INSTANCE
+            private final ISerializerDeserializer<AUUID> uuidSerDe = SerializerDeserializerProvider.INSTANCE
                     .getSerializerDeserializer(BuiltinType.AUUID);
 
             @Override
@@ -80,7 +80,7 @@ public class CreateUUIDDescriptor extends AbstractScalarFunctionDynamicDescripto
 
     @Override
     public FunctionIdentifier getIdentifier() {
-        return AsterixBuiltinFunctions.CREATE_UUID;
+        return BuiltinFunctions.CREATE_UUID;
     }
 
 }

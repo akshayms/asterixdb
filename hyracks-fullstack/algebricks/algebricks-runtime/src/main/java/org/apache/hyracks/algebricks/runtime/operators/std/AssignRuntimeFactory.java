@@ -18,7 +18,6 @@
  */
 package org.apache.hyracks.algebricks.runtime.operators.std;
 
-import java.io.Serializable;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
 
@@ -173,9 +172,7 @@ public class AssignRuntimeFactory extends AbstractOneInputOneOutputRuntimeFactor
                         }
                     }
                 } catch (HyracksDataException e) {
-                    throw new HyracksDataException(ErrorCode.HYRACKS, ErrorCode.ERROR_PROCESSING_TUPLE,
-                            "Error evaluating tuple %1$s in AssignRuntime", (Throwable) e,
-                            new Serializable[] { tupleIndex });
+                    throw HyracksDataException.create(ErrorCode.ERROR_PROCESSING_TUPLE, e, tupleIndex);
                 }
             }
 

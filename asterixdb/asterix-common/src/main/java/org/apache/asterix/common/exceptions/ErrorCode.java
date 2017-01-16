@@ -18,8 +18,11 @@
  */
 package org.apache.asterix.common.exceptions;
 
-import java.util.HashMap;
+import java.io.File;
+import java.io.InputStream;
 import java.util.Map;
+
+import org.apache.hyracks.api.util.ErrorMessageUtil;
 
 // Error code:
 // 0 --- 999:  runtime errors
@@ -28,77 +31,134 @@ import java.util.Map;
 // 3000 ---- 3999: feed errors
 // 4000 ---- 4999: lifecycle management errors
 public class ErrorCode {
+    private static final String RESOURCE_PATH = "asx_errormsg" + File.separator + "en.properties";
     public static final String ASTERIX = "ASX";
 
     // Extension errors
-    public static final int ERROR_EXTENSION_ID_CONFLICT = 4001;
-    public static final int ERROR_EXTENSION_COMPONENT_CONFLICT = 4002;
+    public static final int EXTENSION_ID_CONFLICT = 4001;
+    public static final int EXTENSION_COMPONENT_CONFLICT = 4002;
 
     // Runtime errors
-    public static final int ERROR_CASTING_FIELD = 1;
-    public static final int ERROR_TYPE_MISMATCH = 2;
-    public static final int ERROR_TYPE_INCOMPATIBLE = 3;
-    public static final int ERROR_TYPE_UNSUPPORTED = 4;
-    public static final int ERROR_TYPE_ITEM = 5;
-    public static final int ERROR_INVALID_FORMAT = 6;
-    public static final int ERROR_OVERFLOW = 7;
-    public static final int ERROR_UNDERFLOW = 8;
-    public static final int ERROR_INJECTED_FAILURE = 9;
-    public static final int ERROR_NEGATIVE_VALUE = 10;
-    public static final int ERROR_OUT_OF_BOUND = 11;
-    public static final int ERROR_COERCION = 12;
-    public static final int ERROR_DUPLICATE_FIELD = 13;
+    public static final int CASTING_FIELD = 1;
+    public static final int TYPE_MISMATCH = 2;
+    public static final int TYPE_INCOMPATIBLE = 3;
+    public static final int TYPE_UNSUPPORTED = 4;
+    public static final int TYPE_ITEM = 5;
+    public static final int INVALID_FORMAT = 6;
+    public static final int OVERFLOW = 7;
+    public static final int UNDERFLOW = 8;
+    public static final int INJECTED_FAILURE = 9;
+    public static final int NEGATIVE_VALUE = 10;
+    public static final int OUT_OF_BOUND = 11;
+    public static final int COERCION = 12;
+    public static final int DUPLICATE_FIELD_NAME = 13;
 
     // Compilation errors
-    public static final int ERROR_PARSE_ERROR = 1001;
+    public static final int PARSE_ERROR = 1001;
+    public static final int COMPILATION_TYPE_MISMATCH = 1002;
+    public static final int COMPILATION_TYPE_INCOMPATIBLE = 1003;
+    public static final int COMPILATION_TYPE_UNSUPPORTED = 1004;
+    public static final int COMPILATION_TYPE_ITEM = 1005;
+    public static final int COMPILATION_DUPLICATE_FIELD_NAME = 1006;
+    public static final int COMPILATION_INVALID_EXPRESSION = 1007;
+    public static final int COMPILATION_INVALID_PARAMETER_NUMBER = 1008;
+    public static final int COMPILATION_INVALID_RETURNING_EXPRESSION = 1009;
+    public static final int COMPILATION_FULLTEXT_PHRASE_FOUND = 1010;
 
-    private static final String ERROR_MESSAGE_ID_CONFLICT = "Two Extensions share the same Id: %1$s";
-    private static final String ERROR_MESSAGE_COMPONENT_CONFLICT = "Extension Conflict between %1$s and %2$s both "
-            + "extensions extend %3$s";
-    private static final String ERROR_MESSAGE_TYPE_MISMATCH = "Type mismatch: function %1$s expects"
-            + " its %2$s input parameter to be type %3$s, but the actual input type is %4$s";
-    private static final String ERROR_MESSAGE_TYPE_INCOMPATIBLE = "Type incompatibility: function %1$s gets"
-            + " incompatible input values: %2$s and %3$s";
-    private static final String ERROR_MESSAGE_TYPE_UNSUPPORTED = "Unsupported type: %1$s"
-            + " cannot process input type %2$s";
-    private static final String ERROR_MESSAGE_TYPE_ITEM = "Invalid item type: function %1$s"
-            + " cannot process item type %2$s in an input array (or multiset)";
-    public static final String ERROR_MESSAGE_INVALID_FORMAT = "Invalid format for %1$s in %2$s";
-    public static final String ERROR_MESSAGE_OVERFLOW = "Overflow happend in %1$s";
-    public static final String ERROR_MESSAGE_UNDERFLOW = "Underflow happend in %1$s";
-    public static final String ERROR_MESSAGE_INJECTED_FAILURE = "Injected failure in %1$s";
-    public static final String ERROR_MESSAGE_NEGATIVE_VALUE = "Invalid value: function %1$s expects"
-            + " its %2$s input parameter to be a non-negative value, but gets %3$s";
-    public static final String ERROR_MESSAGE_OUT_OF_BOUND = "Index out of bound in %1$s: %2$s";
-    public static final String ERROR_MESSAGE_COERCION = "Invalid implicit scalar to collection coercion in %1$s";
-    public static final String ERROR_MESSAGE_DUPLICATE_FIELD = "Get duplicate fields in %1$s";
+    // Feed errors
+    public static final int DATAFLOW_ILLEGAL_STATE = 3001;
+    public static final int UTIL_DATAFLOW_UTILS_TUPLE_TOO_LARGE = 3002;
+    public static final int UTIL_DATAFLOW_UTILS_UNKNOWN_FORWARD_POLICY = 3003;
+    public static final int OPERATORS_FEED_INTAKE_OPERATOR_DESCRIPTOR_CLASSLOADER_NOT_CONFIGURED = 3004;
+    public static final int PARSER_DELIMITED_NONOPTIONAL_NULL = 3005;
+    public static final int PARSER_DELIMITED_ILLEGAL_FIELD = 3006;
+    public static final int FEED_MANAGEMENT_ACTIVE_LIFE_CYCLE_EVENT_SUBSCRIBER_ACTIVE_JOB_FAILURE = 3007;
+    public static final int OPERATORS_FEED_INTAKE_OPERATOR_NODE_PUSHABLE_FAIL_AT_INGESTION = 3008;
+    public static final int OPERATORS_FEED_MSG_OPERATOR_NODE_PUSHABLE_INVALID_SUBSCRIBABLE_RUNTIME = 3009;
+    public static final int PARSER_HIVE_NON_PRIMITIVE_LIST_NOT_SUPPORT = 3010;
+    public static final int PARSER_HIVE_FIELD_TYPE = 3011;
+    public static final int PARSER_HIVE_GET_COLUMNS = 3012;
+    public static final int PARSER_HIVE_NO_CLOSED_COLUMNS = 3013;
+    public static final int PARSER_HIVE_NOT_SUPPORT_NON_OP_UNION = 3014;
+    public static final int PARSER_HIVE_MISSING_FIELD_TYPE_INFO = 3015;
+    public static final int PARSER_HIVE_NULL_FIELD = 3016;
+    public static final int PARSER_HIVE_NULL_VALUE_IN_LIST = 3017;
+    public static final int INPUT_RECORD_RECORD_WITH_METADATA_AND_PK_NULL_IN_NON_OPTIONAL = 3018;
+    public static final int INPUT_RECORD_RECORD_WITH_METADATA_AND_PK_CANNT_GET_PKEY = 3019;
+    public static final int FEED_MANAGEMENT_FEED_EVENT_LISTENER_FEED_JOINT_REGISTERED = 3020;
+    public static final int FEED_MANAGEMENT_FEED_EVENT_REGISTER_INTAKE_JOB_FAIL = 3021;
+    public static final int PROVIDER_DATAFLOW_CONTROLLER_UNKNOWN_DATA_SOURCE = 3022;
+    public static final int PROVIDER_DATASOURCE_FACTORY_UNKNOWN_INPUT_STREAM_FACTORY = 3023;
+    public static final int UTIL_EXTERNAL_DATA_UTILS_FAIL_CREATE_STREAM_FACTORY = 3024;
+    public static final int UNKNOWN_RECORD_READER_FACTORY = 3025;
+    public static final int PROVIDER_STREAM_RECORD_READER_UNKNOWN_FORMAT = 3026;
+    public static final int UNKNOWN_RECORD_FORMAT_FOR_META_PARSER = 3027;
+    public static final int LIBRARY_JAVA_JOBJECTS_FIELD_ALREADY_DEFINED = 3028;
+    public static final int LIBRARY_JAVA_JOBJECTS_UNKNOWN_FIELD = 3029;
+    public static final int NODE_RESOLVER_COULDNT_RESOLVE_ADDRESS = 3030;
+    public static final int NODE_RESOLVER_NO_NODE_CONTROLLERS = 3031;
+    public static final int NODE_RESOLVER_UNABLE_RESOLVE_HOST = 3032;
+    public static final int INPUT_RECORD_CONVERTER_DCP_MSG_TO_RECORD_CONVERTER_UNKNOWN_DCP_REQUEST = 3033;
+    public static final int FEED_DATAFLOW_FRAME_DISTR_REGISTER_FAILED_DATA_PROVIDER = 3034;
+    public static final int FEED_MANAGEMENT_FEED_EVENTS_LISTENER_ALREADY_HAVE_INTAKE_JOB = 3035;
+    public static final int FEED_MANAGEMENT_FEED_EVENTS_LISTENER_INTAKE_JOB_REGISTERED = 3036;
+    public static final int FEED_MANAGEMENT_FEED_EVENTS_LISTENER_FEED_JOB_REGISTERED = 3037;
+    public static final int INPUT_RECORD_READER_CHAR_ARRAY_RECORD_TOO_LARGE = 3038;
+    public static final int LIBRARY_JOBJECT_ACCESSOR_CANNOT_PARSE_TYPE = 3039;
+    public static final int LIBRARY_JOBJECT_UTIL_ILLEGAL_ARGU_TYPE = 3040;
+    public static final int LIBRARY_EXTERNAL_FUNCTION_UNABLE_TO_LOAD_CLASS = 3041;
+    public static final int LIBRARY_EXTERNAL_FUNCTION_UNSUPPORTED_KIND = 3042;
+    public static final int LIBRARY_EXTERNAL_FUNCTION_UNKNOWN_KIND = 3043;
+    public static final int LIBRARY_EXTERNAL_LIBRARY_CLASS_REGISTERED = 3044;
+    public static final int LIBRARY_JAVA_FUNCTION_HELPER_CANNOT_HANDLE_ARGU_TYPE = 3045;
+    public static final int LIBRARY_JAVA_FUNCTION_HELPER_OBJ_TYPE_NOT_SUPPORTED = 3046;
+    public static final int LIBRARY_EXTERNAL_FUNCTION_UNSUPPORTED_NAME = 3047;
+    public static final int OPERATORS_FEED_META_OPERATOR_DESCRIPTOR_INVALID_RUNTIME = 3048;
+    public static final int PARSER_FACTORY_DELIMITED_DATA_PARSER_FACTORY_NOT_VALID_DELIMITER = 3049;
+    public static final int PARSER_FACTORY_DELIMITED_DATA_PARSER_FACTORY_NOT_VALID_QUOTE = 3050;
+    public static final int PARSER_FACTORY_DELIMITED_DATA_PARSER_FACTORY_QUOTE_DELIMITER_MISMATCH = 3051;
+    public static final int INDEXING_EXTERNAL_FILE_INDEX_ACCESSOR_UNABLE_TO_FIND_FILE_INDEX = 3052;
+    public static final int PARSER_ADM_DATA_PARSER_FIELD_NOT_NULL = 3053;
+    public static final int PARSER_ADM_DATA_PARSER_TYPE_MISMATCH = 3054;
+    public static final int PARSER_ADM_DATA_PARSER_UNEXPECTED_TOKEN_KIND = 3055;
+    public static final int PARSER_ADM_DATA_PARSER_ILLEGAL_ESCAPE = 3056;
+    public static final int PARSER_ADM_DATA_PARSER_RECORD_END_UNEXPECTED = 3057;
+    public static final int PARSER_ADM_DATA_PARSER_EXTRA_FIELD_IN_CLOSED_RECORD = 3058;
+    public static final int PARSER_ADM_DATA_PARSER_UNEXPECTED_TOKEN_WHEN_EXPECT_COMMA = 3059;
+    public static final int PARSER_ADM_DATA_PARSER_FOUND_COMMA_WHEN = 3060;
+    public static final int PARSER_ADM_DATA_PARSER_UNSUPPORTED_INTERVAL_TYPE = 3061;
+    public static final int PARSER_ADM_DATA_PARSER_INTERVAL_NOT_CLOSED = 3062;
+    public static final int PARSER_ADM_DATA_PARSER_INTERVAL_BEGIN_END_POINT_MISMATCH = 3063;
+    public static final int PARSER_ADM_DATA_PARSER_INTERVAL_MISSING_COMMA = 3064;
+    public static final int PARSER_ADM_DATA_PARSER_INTERVAL_INVALID_DATETIME = 3065;
+    public static final int PARSER_ADM_DATA_PARSER_INTERVAL_UNSUPPORTED_TYPE = 3066;
+    public static final int PARSER_ADM_DATA_PARSER_INTERVAL_INTERVAL_ARGUMENT_ERROR = 3067;
+    public static final int PARSER_ADM_DATA_PARSER_LIST_FOUND_END_COLLECTION = 3068;
+    public static final int PARSER_ADM_DATA_PARSER_LIST_FOUND_COMMA_BEFORE_LIST = 3069;
+    public static final int PARSER_ADM_DATA_PARSER_LIST_FOUND_COMMA_EXPECTING_ITEM = 3070;
+    public static final int PARSER_ADM_DATA_PARSER_LIST_FOUND_END_RECOD = 3071;
+    public static final int PARSER_ADM_DATA_PARSER_CAST_ERROR = 3072;
+    public static final int PARSER_ADM_DATA_PARSER_CONSTRUCTOR_MISSING_DESERIALIZER = 3073;
+    public static final int PARSER_ADM_DATA_PARSER_WRONG_INSTANCE = 3074;
+    public static final int PARSER_TWEET_PARSER_CLOSED_FIELD_NULL = 3075;
+    public static final int UTIL_FILE_SYSTEM_WATCHER_NO_FILES_FOUND = 3076;
+    public static final int UTIL_LOCAL_FILE_SYSTEM_UTILS_PATH_NOT_FOUND = 3077;
+    public static final int UTIL_HDFS_UTILS_CANNOT_OBTAIN_HDFS_SCHEDULER = 3078;
 
-    private static Map<Integer, String> errorMessageMap = new HashMap<>();
-
-    static {
-        // compilation errors
-        errorMessageMap.put(ERROR_TYPE_MISMATCH, ERROR_MESSAGE_TYPE_MISMATCH);
-        errorMessageMap.put(ERROR_TYPE_INCOMPATIBLE, ERROR_MESSAGE_TYPE_INCOMPATIBLE);
-        errorMessageMap.put(ERROR_TYPE_ITEM, ERROR_MESSAGE_TYPE_ITEM);
-        errorMessageMap.put(ERROR_TYPE_UNSUPPORTED, ERROR_MESSAGE_TYPE_UNSUPPORTED);
-        errorMessageMap.put(ERROR_INVALID_FORMAT, ERROR_MESSAGE_INVALID_FORMAT);
-        errorMessageMap.put(ERROR_OVERFLOW, ERROR_MESSAGE_OVERFLOW);
-        errorMessageMap.put(ERROR_UNDERFLOW, ERROR_MESSAGE_UNDERFLOW);
-        errorMessageMap.put(ERROR_INJECTED_FAILURE, ERROR_MESSAGE_INJECTED_FAILURE);
-        errorMessageMap.put(ERROR_NEGATIVE_VALUE, ERROR_MESSAGE_NEGATIVE_VALUE);
-        errorMessageMap.put(ERROR_OUT_OF_BOUND, ERROR_MESSAGE_OUT_OF_BOUND);
-        errorMessageMap.put(ERROR_COERCION, ERROR_MESSAGE_COERCION);
-        errorMessageMap.put(ERROR_DUPLICATE_FIELD, ERROR_MESSAGE_DUPLICATE_FIELD);
-
-        // lifecycle management errors
-        errorMessageMap.put(ERROR_EXTENSION_ID_CONFLICT, ERROR_MESSAGE_ID_CONFLICT);
-        errorMessageMap.put(ERROR_EXTENSION_COMPONENT_CONFLICT, ERROR_MESSAGE_COMPONENT_CONFLICT);
-    }
+    // Loads the map that maps error codes to error message templates.
+    private static Map<Integer, String> errorMessageMap = null;
 
     private ErrorCode() {
     }
 
     public static String getErrorMessage(int errorCode) {
+        if (errorMessageMap == null) {
+            try (InputStream resourceStream = ErrorCode.class.getClassLoader().getResourceAsStream(RESOURCE_PATH)) {
+                errorMessageMap = ErrorMessageUtil.loadErrorMap(resourceStream);
+            } catch (Exception e) {
+                throw new IllegalStateException(e);
+            }
+        }
         String msg = errorMessageMap.get(errorCode);
         if (msg == null) {
             throw new IllegalStateException("Undefined error code: " + errorCode);

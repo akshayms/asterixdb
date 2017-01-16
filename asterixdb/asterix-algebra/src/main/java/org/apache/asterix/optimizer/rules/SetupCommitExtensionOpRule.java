@@ -25,9 +25,9 @@ import org.apache.asterix.algebra.operators.CommitOperator;
 import org.apache.asterix.algebra.operators.physical.CommitPOperator;
 import org.apache.asterix.common.transactions.JobId;
 import org.apache.asterix.lang.common.util.FunctionUtil;
-import org.apache.asterix.metadata.declared.AqlMetadataProvider;
 import org.apache.asterix.metadata.declared.DatasetDataSource;
-import org.apache.asterix.om.functions.AsterixBuiltinFunctions;
+import org.apache.asterix.metadata.declared.MetadataProvider;
+import org.apache.asterix.om.functions.BuiltinFunctions;
 import org.apache.commons.lang3.mutable.Mutable;
 import org.apache.commons.lang3.mutable.MutableObject;
 import org.apache.hyracks.algebricks.common.exceptions.AlgebricksException;
@@ -102,13 +102,13 @@ public class SetupCommitExtensionOpRule implements IAlgebraicRewriteRule {
                         //we need to add a function that checks if previous record was found
                         upsertVar = context.newVar();
                         AbstractFunctionCallExpression orFunc = new ScalarFunctionCallExpression(
-                                FunctionUtil.getFunctionInfo(AsterixBuiltinFunctions.OR));
+                                FunctionUtil.getFunctionInfo(BuiltinFunctions.OR));
                         // is new value missing? -> this means that the expected operation is delete
                         AbstractFunctionCallExpression isNewMissingFunc = new ScalarFunctionCallExpression(
-                                FunctionUtil.getFunctionInfo(AsterixBuiltinFunctions.IS_MISSING));
+                                FunctionUtil.getFunctionInfo(BuiltinFunctions.IS_MISSING));
                         isNewMissingFunc.getArguments().add(insertDeleteUpsertOperator.getPayloadExpression());
                         AbstractFunctionCallExpression isPrevMissingFunc = new ScalarFunctionCallExpression(
-                                FunctionUtil.getFunctionInfo(AsterixBuiltinFunctions.IS_MISSING));
+                                FunctionUtil.getFunctionInfo(BuiltinFunctions.IS_MISSING));
                         // argument is the previous record
                         isPrevMissingFunc.getArguments().add(new MutableObject<ILogicalExpression>(
                                 new VariableReferenceExpression(insertDeleteUpsertOperator.getBeforeOpRecordVar())));
@@ -146,7 +146,7 @@ public class SetupCommitExtensionOpRule implements IAlgebraicRewriteRule {
         }
 
         //get JobId(TransactorId)
-        AqlMetadataProvider mp = (AqlMetadataProvider) context.getMetadataProvider();
+        MetadataProvider mp = (MetadataProvider) context.getMetadataProvider();
         JobId jobId = mp.getJobId();
 
         //create the logical and physical operator

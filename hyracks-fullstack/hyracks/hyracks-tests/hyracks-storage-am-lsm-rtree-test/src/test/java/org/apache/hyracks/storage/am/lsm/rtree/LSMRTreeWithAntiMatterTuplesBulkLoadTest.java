@@ -21,12 +21,8 @@ package org.apache.hyracks.storage.am.lsm.rtree;
 
 import java.util.Random;
 
-import org.junit.After;
-import org.junit.Before;
-
 import org.apache.hyracks.api.dataflow.value.ISerializerDeserializer;
 import org.apache.hyracks.api.exceptions.HyracksDataException;
-import org.apache.hyracks.api.exceptions.HyracksException;
 import org.apache.hyracks.storage.am.common.api.IPrimitiveValueProviderFactory;
 import org.apache.hyracks.storage.am.config.AccessMethodTestsConfig;
 import org.apache.hyracks.storage.am.lsm.rtree.util.LSMRTreeTestHarness;
@@ -34,6 +30,8 @@ import org.apache.hyracks.storage.am.lsm.rtree.util.LSMRTreeWithAntiMatterTuples
 import org.apache.hyracks.storage.am.rtree.AbstractRTreeBulkLoadTest;
 import org.apache.hyracks.storage.am.rtree.AbstractRTreeTestContext;
 import org.apache.hyracks.storage.am.rtree.frames.RTreePolicyType;
+import org.junit.After;
+import org.junit.Before;
 
 @SuppressWarnings("rawtypes")
 public class LSMRTreeWithAntiMatterTuplesBulkLoadTest extends AbstractRTreeBulkLoadTest {
@@ -45,7 +43,7 @@ public class LSMRTreeWithAntiMatterTuplesBulkLoadTest extends AbstractRTreeBulkL
     private final LSMRTreeTestHarness harness = new LSMRTreeTestHarness();
 
     @Before
-    public void setUp() throws HyracksException {
+    public void setUp() throws HyracksDataException {
         harness.setUp();
     }
 
@@ -58,10 +56,11 @@ public class LSMRTreeWithAntiMatterTuplesBulkLoadTest extends AbstractRTreeBulkL
     protected AbstractRTreeTestContext createTestContext(ISerializerDeserializer[] fieldSerdes,
             IPrimitiveValueProviderFactory[] valueProviderFactories, int numKeys, RTreePolicyType rtreePolicyType)
             throws Exception {
-        return LSMRTreeWithAntiMatterTuplesTestContext.create(harness.getVirtualBufferCaches(),
+        return LSMRTreeWithAntiMatterTuplesTestContext.create(harness.getIOManager(), harness.getVirtualBufferCaches(),
                 harness.getFileReference(), harness.getDiskBufferCache(), harness.getDiskFileMapProvider(),
                 fieldSerdes, valueProviderFactories, numKeys, rtreePolicyType, harness.getMergePolicy(),
-                harness.getOperationTracker(), harness.getIOScheduler(), harness.getIOOperationCallback());
+                harness.getOperationTracker(), harness.getIOScheduler(), harness.getIOOperationCallback(),
+                harness.getMetadataPageManagerFactory());
     }
 
     @Override

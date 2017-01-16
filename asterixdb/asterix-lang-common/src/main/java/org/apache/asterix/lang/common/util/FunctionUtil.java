@@ -30,9 +30,9 @@ import org.apache.asterix.lang.common.base.Expression;
 import org.apache.asterix.lang.common.statement.FunctionDecl;
 import org.apache.asterix.metadata.MetadataManager;
 import org.apache.asterix.metadata.MetadataTransactionContext;
-import org.apache.asterix.metadata.declared.AqlMetadataProvider;
+import org.apache.asterix.metadata.declared.MetadataProvider;
 import org.apache.asterix.metadata.entities.Function;
-import org.apache.asterix.om.functions.AsterixBuiltinFunctions;
+import org.apache.asterix.om.functions.BuiltinFunctions;
 import org.apache.hyracks.algebricks.core.algebra.functions.FunctionIdentifier;
 import org.apache.hyracks.algebricks.core.algebra.functions.IFunctionInfo;
 
@@ -41,7 +41,7 @@ public class FunctionUtil {
     public static final String IMPORT_PRIVATE_FUNCTIONS = "import-private-functions";
 
     public static IFunctionInfo getFunctionInfo(FunctionIdentifier fi) {
-        return AsterixBuiltinFunctions.getAsterixFunctionInfo(fi);
+        return BuiltinFunctions.getAsterixFunctionInfo(fi);
     }
 
     public static IFunctionInfo getFunctionInfo(FunctionSignature fs) {
@@ -80,7 +80,7 @@ public class FunctionUtil {
      *            for normalizing function names.
      * @throws AsterixException
      */
-    public static List<FunctionDecl> retrieveUsedStoredFunctions(AqlMetadataProvider metadataProvider,
+    public static List<FunctionDecl> retrieveUsedStoredFunctions(MetadataProvider metadataProvider,
             Expression expression, List<FunctionSignature> declaredFunctions, List<FunctionDecl> inputFunctionDecls,
             IFunctionCollector functionCollector, IFunctionParser functionParser,
             IFunctionNormalizer functionNormalizer) throws AsterixException {
@@ -110,7 +110,7 @@ public class FunctionUtil {
             if (function == null) {
                 FunctionSignature normalizedSignature = functionNormalizer == null ? signature
                         : functionNormalizer.normalizeBuiltinFunctionSignature(signature);
-                if (AsterixBuiltinFunctions.isBuiltinCompilerFunction(normalizedSignature, includePrivateFunctions)) {
+                if (BuiltinFunctions.isBuiltinCompilerFunction(normalizedSignature, includePrivateFunctions)) {
                     continue;
                 }
                 StringBuilder messageBuilder = new StringBuilder();

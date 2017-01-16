@@ -24,30 +24,31 @@ import java.util.logging.Logger;
 
 import org.apache.asterix.algebra.operators.physical.CommitRuntime;
 import org.apache.asterix.app.external.TestLibrarian;
-import org.apache.asterix.app.nc.AsterixNCAppRuntimeContext;
-import org.apache.asterix.common.api.ILocalResourceMetadata;
-import org.apache.asterix.common.config.AsterixTransactionProperties;
+import org.apache.asterix.app.nc.NCAppRuntimeContext;
+import org.apache.asterix.common.config.TransactionProperties;
 import org.apache.asterix.common.context.AsterixVirtualBufferCacheProvider;
 import org.apache.asterix.common.context.DatasetLifecycleManager;
 import org.apache.asterix.common.context.TransactionSubsystemProvider;
-import org.apache.asterix.common.dataflow.AsterixLSMInsertDeleteOperatorNodePushable;
-import org.apache.asterix.common.dataflow.AsterixLSMTreeInsertDeleteOperatorDescriptor;
+import org.apache.asterix.common.dataflow.LSMIndexUtil;
+import org.apache.asterix.common.dataflow.LSMInsertDeleteOperatorNodePushable;
+import org.apache.asterix.common.dataflow.LSMTreeInsertDeleteOperatorDescriptor;
 import org.apache.asterix.common.ioopcallbacks.LSMBTreeIOOperationCallbackFactory;
 import org.apache.asterix.common.transactions.IRecoveryManager.ResourceType;
+import org.apache.asterix.common.transactions.IResourceFactory;
 import org.apache.asterix.common.transactions.ITransactionManager;
-import org.apache.asterix.formats.nontagged.AqlBinaryComparatorFactoryProvider;
-import org.apache.asterix.formats.nontagged.AqlSerializerDeserializerProvider;
-import org.apache.asterix.formats.nontagged.AqlTypeTraitProvider;
+import org.apache.asterix.formats.nontagged.BinaryComparatorFactoryProvider;
+import org.apache.asterix.formats.nontagged.SerializerDeserializerProvider;
+import org.apache.asterix.formats.nontagged.TypeTraitProvider;
 import org.apache.asterix.metadata.entities.Dataset;
 import org.apache.asterix.metadata.utils.DatasetUtils;
 import org.apache.asterix.om.types.ARecordType;
 import org.apache.asterix.om.types.IAType;
 import org.apache.asterix.runtime.formats.NonTaggedDataFormat;
-import org.apache.asterix.runtime.util.AsterixRuntimeComponentsProvider;
+import org.apache.asterix.runtime.util.RuntimeComponentsProvider;
 import org.apache.asterix.test.runtime.ExecutionTestUtil;
 import org.apache.asterix.transaction.management.opcallbacks.PrimaryIndexModificationOperationCallbackFactory;
 import org.apache.asterix.transaction.management.opcallbacks.PrimaryIndexOperationTrackerProvider;
-import org.apache.asterix.transaction.management.resource.LSMBTreeLocalResourceMetadata;
+import org.apache.asterix.transaction.management.resource.LSMBTreeLocalResourceMetadataFactory;
 import org.apache.asterix.transaction.management.resource.PersistentLocalResourceFactoryProvider;
 import org.apache.asterix.transaction.management.service.logging.LogReader;
 import org.apache.asterix.transaction.management.service.transaction.TransactionSubsystem;
@@ -65,12 +66,13 @@ import org.apache.hyracks.api.dataflow.value.ISerializerDeserializer;
 import org.apache.hyracks.api.dataflow.value.ITypeTraits;
 import org.apache.hyracks.api.dataflow.value.RecordDescriptor;
 import org.apache.hyracks.api.exceptions.HyracksDataException;
+import org.apache.hyracks.api.io.FileSplit;
+import org.apache.hyracks.api.io.ManagedFileSplit;
 import org.apache.hyracks.api.job.JobId;
 import org.apache.hyracks.api.job.JobSpecification;
 import org.apache.hyracks.api.util.HyracksConstants;
 import org.apache.hyracks.dataflow.common.util.TaskUtils;
 import org.apache.hyracks.dataflow.std.file.ConstantFileSplitProvider;
-import org.apache.hyracks.dataflow.std.file.FileSplit;
 import org.apache.hyracks.storage.am.btree.dataflow.BTreeSearchOperatorDescriptor;
 import org.apache.hyracks.storage.am.btree.dataflow.BTreeSearchOperatorNodePushable;
 import org.apache.hyracks.storage.am.common.api.IModificationOperationCallbackFactory;
@@ -97,7 +99,7 @@ public class TestNodeController {
             File.separator);
 
     protected static final String TEST_CONFIG_FILE_NAME = "asterix-build-configuration.xml";
-    protected static AsterixTransactionProperties txnProperties;
+    protected static TransactionProperties txnProperties;
     private static final boolean cleanupOnStart = true;
     private static final boolean cleanupOnStop = true;
 
@@ -153,23 +155,23 @@ public class TestNodeController {
         return new org.apache.asterix.common.transactions.JobId((int) jobId.getId());
     }
 
-    public AsterixLSMInsertDeleteOperatorNodePushable getInsertPipeline(IHyracksTaskContext ctx, Dataset dataset,
+    public LSMInsertDeleteOperatorNodePushable getInsertPipeline(IHyracksTaskContext ctx, Dataset dataset,
             IAType[] primaryKeyTypes, ARecordType recordType, ARecordType metaType,
             ILSMMergePolicyFactory mergePolicyFactory, Map<String, String> mergePolicyProperties, int[] filterFields)
-            throws AlgebricksException {
+            throws AlgebricksException, HyracksDataException {
         PrimaryIndexInfo primaryIndexInfo = new PrimaryIndexInfo(dataset, primaryKeyTypes, recordType, metaType,
                 mergePolicyFactory, mergePolicyProperties, filterFields);
         IndexOperation op = IndexOperation.INSERT;
         IModificationOperationCallbackFactory modOpCallbackFactory = new PrimaryIndexModificationOperationCallbackFactory(
                 getTxnJobId(), dataset.getDatasetId(), primaryIndexInfo.primaryKeyIndexes, TXN_SUBSYSTEM_PROVIDER, op,
                 ResourceType.LSM_BTREE, true);
-        AsterixLSMTreeInsertDeleteOperatorDescriptor indexOpDesc = getInsertOpratorDesc(primaryIndexInfo,
+        LSMTreeInsertDeleteOperatorDescriptor indexOpDesc = getInsertOpratorDesc(primaryIndexInfo,
                 modOpCallbackFactory);
         LSMBTreeDataflowHelperFactory dataflowHelperFactory = getPrimaryIndexDataflowHelperFactory(ctx,
                 primaryIndexInfo);
         Mockito.when(indexOpDesc.getIndexDataflowHelperFactory()).thenReturn(dataflowHelperFactory);
         IRecordDescriptorProvider recordDescProvider = primaryIndexInfo.getInsertRecordDescriptorProvider();
-        AsterixLSMInsertDeleteOperatorNodePushable insertOp = new AsterixLSMInsertDeleteOperatorNodePushable(
+        LSMInsertDeleteOperatorNodePushable insertOp = new LSMInsertDeleteOperatorNodePushable(
                 indexOpDesc, ctx, PARTITION, primaryIndexInfo.primaryIndexInsertFieldsPermutations, recordDescProvider,
                 op, true);
         CommitRuntime commitOp = new CommitRuntime(ctx, getTxnJobId(), dataset.getDatasetId(),
@@ -190,12 +192,12 @@ public class TestNodeController {
         LSMBTreeDataflowHelperFactory indexDataflowHelperFactory = getPrimaryIndexDataflowHelperFactory(ctx,
                 primaryIndexInfo);
         BTreeSearchOperatorDescriptor searchOpDesc = new BTreeSearchOperatorDescriptor(spec, primaryIndexInfo.rDesc,
-                AsterixRuntimeComponentsProvider.RUNTIME_PROVIDER, AsterixRuntimeComponentsProvider.RUNTIME_PROVIDER,
+                RuntimeComponentsProvider.RUNTIME_PROVIDER, RuntimeComponentsProvider.RUNTIME_PROVIDER,
                 primaryIndexInfo.fileSplitProvider, primaryIndexInfo.primaryIndexTypeTraits,
                 primaryIndexInfo.primaryIndexComparatorFactories, primaryIndexInfo.primaryIndexBloomFilterKeyFields,
                 primaryIndexInfo.primaryKeyIndexes, primaryIndexInfo.primaryKeyIndexes, true, true,
                 indexDataflowHelperFactory, false, false, null, NoOpOperationCallbackFactory.INSTANCE, filterFields,
-                filterFields);
+                filterFields, LSMIndexUtil.getMetadataPageManagerFactory());
         BTreeSearchOperatorNodePushable searchOp = new BTreeSearchOperatorNodePushable(searchOpDesc, ctx, 0,
                 primaryIndexInfo.getSearchRecordDescriptorProvider(), /*primaryIndexInfo.primaryKeyIndexes*/null,
                 /*primaryIndexInfo.primaryKeyIndexes*/null, true, true, filterFields, filterFields);
@@ -214,13 +216,13 @@ public class TestNodeController {
         return jobId;
     }
 
-    public AsterixLSMTreeInsertDeleteOperatorDescriptor getInsertOpratorDesc(PrimaryIndexInfo primaryIndexInfo,
+    public LSMTreeInsertDeleteOperatorDescriptor getInsertOpratorDesc(PrimaryIndexInfo primaryIndexInfo,
             IModificationOperationCallbackFactory modOpCallbackFactory) {
-        AsterixLSMTreeInsertDeleteOperatorDescriptor indexOpDesc = Mockito
-                .mock(AsterixLSMTreeInsertDeleteOperatorDescriptor.class);
+        LSMTreeInsertDeleteOperatorDescriptor indexOpDesc = Mockito
+                .mock(LSMTreeInsertDeleteOperatorDescriptor.class);
         Mockito.when(indexOpDesc.getLifecycleManagerProvider())
-                .thenReturn(AsterixRuntimeComponentsProvider.RUNTIME_PROVIDER);
-        Mockito.when(indexOpDesc.getStorageManager()).thenReturn(AsterixRuntimeComponentsProvider.RUNTIME_PROVIDER);
+                .thenReturn(RuntimeComponentsProvider.RUNTIME_PROVIDER);
+        Mockito.when(indexOpDesc.getStorageManager()).thenReturn(RuntimeComponentsProvider.RUNTIME_PROVIDER);
         Mockito.when(indexOpDesc.getFileSplitProvider()).thenReturn(primaryIndexInfo.fileSplitProvider);
         Mockito.when(indexOpDesc.getLocalResourceFactoryProvider())
                 .thenReturn(primaryIndexInfo.localResourceFactoryProvider);
@@ -230,14 +232,16 @@ public class TestNodeController {
         Mockito.when(indexOpDesc.getTreeIndexBloomFilterKeyFields())
                 .thenReturn(primaryIndexInfo.primaryIndexBloomFilterKeyFields);
         Mockito.when(indexOpDesc.getModificationOpCallbackFactory()).thenReturn(modOpCallbackFactory);
+        Mockito.when(indexOpDesc.getPageManagerFactory()).thenReturn(LSMIndexUtil
+                .getMetadataPageManagerFactory());
         return indexOpDesc;
     }
 
     public TreeIndexCreateOperatorDescriptor getIndexCreateOpDesc(PrimaryIndexInfo primaryIndexInfo) {
         TreeIndexCreateOperatorDescriptor indexOpDesc = Mockito.mock(TreeIndexCreateOperatorDescriptor.class);
         Mockito.when(indexOpDesc.getLifecycleManagerProvider())
-                .thenReturn(AsterixRuntimeComponentsProvider.RUNTIME_PROVIDER);
-        Mockito.when(indexOpDesc.getStorageManager()).thenReturn(AsterixRuntimeComponentsProvider.RUNTIME_PROVIDER);
+                .thenReturn(RuntimeComponentsProvider.RUNTIME_PROVIDER);
+        Mockito.when(indexOpDesc.getStorageManager()).thenReturn(RuntimeComponentsProvider.RUNTIME_PROVIDER);
         Mockito.when(indexOpDesc.getFileSplitProvider()).thenReturn(primaryIndexInfo.fileSplitProvider);
         Mockito.when(indexOpDesc.getLocalResourceFactoryProvider())
                 .thenReturn(primaryIndexInfo.localResourceFactoryProvider);
@@ -246,11 +250,13 @@ public class TestNodeController {
                 .thenReturn(primaryIndexInfo.primaryIndexComparatorFactories);
         Mockito.when(indexOpDesc.getTreeIndexBloomFilterKeyFields())
                 .thenReturn(primaryIndexInfo.primaryIndexBloomFilterKeyFields);
+        Mockito.when(indexOpDesc.getPageManagerFactory()).thenReturn(LSMIndexUtil
+                .getMetadataPageManagerFactory());
         return indexOpDesc;
     }
 
     public ConstantFileSplitProvider getFileSplitProvider(Dataset dataset) {
-        FileSplit fileSplit = new FileSplit(ExecutionTestUtil.integrationUtil.ncs[0].getId(),
+        FileSplit fileSplit = new ManagedFileSplit(ExecutionTestUtil.integrationUtil.ncs[0].getId(),
                 dataset.getDataverseName() + File.separator + dataset.getDatasetName());
         return new ConstantFileSplitProvider(new FileSplit[] { fileSplit });
     }
@@ -260,7 +266,7 @@ public class TestNodeController {
             int[] primaryIndexBloomFilterKeyFields, ILSMMergePolicyFactory mergePolicyFactory,
             Map<String, String> mergePolicyProperties, ITypeTraits[] filterTypeTraits,
             IBinaryComparatorFactory[] filterCmpFactories, int[] btreeFields, int[] filterFields) {
-        ILocalResourceMetadata localResourceMetadata = new LSMBTreeLocalResourceMetadata(primaryIndexTypeTraits,
+        IResourceFactory localResourceMetadata = new LSMBTreeLocalResourceMetadataFactory(primaryIndexTypeTraits,
                 primaryIndexComparatorFactories, primaryIndexBloomFilterKeyFields, true, dataset.getDatasetId(),
                 mergePolicyFactory, mergePolicyProperties, filterTypeTraits, filterCmpFactories, btreeFields,
                 filterFields);
@@ -271,12 +277,12 @@ public class TestNodeController {
 
     public LSMBTreeDataflowHelper getPrimaryIndexDataflowHelper(IHyracksTaskContext ctx,
             PrimaryIndexInfo primaryIndexInfo, TreeIndexCreateOperatorDescriptor indexOpDesc)
-            throws AlgebricksException {
+            throws AlgebricksException, HyracksDataException {
         LSMBTreeDataflowHelperFactory dataflowHelperFactory = new LSMBTreeDataflowHelperFactory(
                 new AsterixVirtualBufferCacheProvider(primaryIndexInfo.dataset.getDatasetId()),
                 primaryIndexInfo.mergePolicyFactory, primaryIndexInfo.mergePolicyProperties,
                 new PrimaryIndexOperationTrackerProvider(primaryIndexInfo.dataset.getDatasetId()),
-                AsterixRuntimeComponentsProvider.RUNTIME_PROVIDER, LSMBTreeIOOperationCallbackFactory.INSTANCE,
+                RuntimeComponentsProvider.RUNTIME_PROVIDER, LSMBTreeIOOperationCallbackFactory.INSTANCE,
                 BLOOM_FILTER_FALSE_POSITIVE_RATE, true, primaryIndexInfo.filterTypeTraits,
                 primaryIndexInfo.filterCmpFactories, primaryIndexInfo.btreeFields, primaryIndexInfo.filterFields, true);
         IndexDataflowHelper dataflowHelper = dataflowHelperFactory.createIndexDataflowHelper(indexOpDesc, ctx,
@@ -290,7 +296,7 @@ public class TestNodeController {
                 new AsterixVirtualBufferCacheProvider(primaryIndexInfo.dataset.getDatasetId()),
                 primaryIndexInfo.mergePolicyFactory, primaryIndexInfo.mergePolicyProperties,
                 new PrimaryIndexOperationTrackerProvider(primaryIndexInfo.dataset.getDatasetId()),
-                AsterixRuntimeComponentsProvider.RUNTIME_PROVIDER, LSMBTreeIOOperationCallbackFactory.INSTANCE,
+                RuntimeComponentsProvider.RUNTIME_PROVIDER, LSMBTreeIOOperationCallbackFactory.INSTANCE,
                 BLOOM_FILTER_FALSE_POSITIVE_RATE, true, primaryIndexInfo.filterTypeTraits,
                 primaryIndexInfo.filterCmpFactories, primaryIndexInfo.btreeFields, primaryIndexInfo.filterFields, true);
     }
@@ -327,7 +333,7 @@ public class TestNodeController {
     private IBinaryComparatorFactory[] createPrimaryIndexComparatorFactories(IAType[] primaryKeyTypes) {
         IBinaryComparatorFactory[] primaryIndexComparatorFactories = new IBinaryComparatorFactory[primaryKeyTypes.length];
         for (int j = 0; j < primaryKeyTypes.length; ++j) {
-            primaryIndexComparatorFactories[j] = AqlBinaryComparatorFactoryProvider.INSTANCE
+            primaryIndexComparatorFactories[j] = BinaryComparatorFactoryProvider.INSTANCE
                     .getBinaryComparatorFactory(primaryKeyTypes[j], true);
         }
         return primaryIndexComparatorFactories;
@@ -338,12 +344,12 @@ public class TestNodeController {
         int i = 0;
         ISerializerDeserializer<?>[] primaryIndexSerdes = new ISerializerDeserializer<?>[primaryIndexNumOfTupleFields];
         for (; i < primaryKeyTypes.length; i++) {
-            primaryIndexSerdes[i] = AqlSerializerDeserializerProvider.INSTANCE
+            primaryIndexSerdes[i] = SerializerDeserializerProvider.INSTANCE
                     .getSerializerDeserializer(primaryKeyTypes[i]);
         }
-        primaryIndexSerdes[i++] = AqlSerializerDeserializerProvider.INSTANCE.getSerializerDeserializer(recordType);
+        primaryIndexSerdes[i++] = SerializerDeserializerProvider.INSTANCE.getSerializerDeserializer(recordType);
         if (metaType != null) {
-            primaryIndexSerdes[i] = AqlSerializerDeserializerProvider.INSTANCE.getSerializerDeserializer(metaType);
+            primaryIndexSerdes[i] = SerializerDeserializerProvider.INSTANCE.getSerializerDeserializer(metaType);
         }
         return primaryIndexSerdes;
     }
@@ -353,11 +359,11 @@ public class TestNodeController {
         ITypeTraits[] primaryIndexTypeTraits = new ITypeTraits[primaryIndexNumOfTupleFields];
         int i = 0;
         for (; i < primaryKeyTypes.length; i++) {
-            primaryIndexTypeTraits[i] = AqlTypeTraitProvider.INSTANCE.getTypeTrait(primaryKeyTypes[i]);
+            primaryIndexTypeTraits[i] = TypeTraitProvider.INSTANCE.getTypeTrait(primaryKeyTypes[i]);
         }
-        primaryIndexTypeTraits[i++] = AqlTypeTraitProvider.INSTANCE.getTypeTrait(recordType);
+        primaryIndexTypeTraits[i++] = TypeTraitProvider.INSTANCE.getTypeTrait(recordType);
         if (metaType != null) {
-            primaryIndexTypeTraits[i] = AqlTypeTraitProvider.INSTANCE.getTypeTrait(metaType);
+            primaryIndexTypeTraits[i] = TypeTraitProvider.INSTANCE.getTypeTrait(metaType);
         }
         return primaryIndexTypeTraits;
     }
@@ -375,7 +381,7 @@ public class TestNodeController {
     }
 
     public TransactionSubsystem getTransactionSubsystem() {
-        return (TransactionSubsystem) ((AsterixNCAppRuntimeContext) ExecutionTestUtil.integrationUtil.ncs[0]
+        return (TransactionSubsystem) ((NCAppRuntimeContext) ExecutionTestUtil.integrationUtil.ncs[0]
                 .getApplicationContext().getApplicationObject()).getTransactionSubsystem();
     }
 
@@ -383,8 +389,8 @@ public class TestNodeController {
         return getTransactionSubsystem().getTransactionManager();
     }
 
-    public AsterixNCAppRuntimeContext getAppRuntimeContext() {
-        return (AsterixNCAppRuntimeContext) ExecutionTestUtil.integrationUtil.ncs[0].getApplicationContext()
+    public NCAppRuntimeContext getAppRuntimeContext() {
+        return (NCAppRuntimeContext) ExecutionTestUtil.integrationUtil.ncs[0].getApplicationContext()
                 .getApplicationObject();
     }
 
@@ -461,8 +467,8 @@ public class TestNodeController {
             ITypeTraits[] primaryKeyTypeTraits = new ITypeTraits[primaryKeyTypes.length];
             ISerializerDeserializer<?>[] primaryKeySerdes = new ISerializerDeserializer<?>[primaryKeyTypes.length];
             for (int i = 0; i < primaryKeyTypes.length; i++) {
-                primaryKeyTypeTraits[i] = AqlTypeTraitProvider.INSTANCE.getTypeTrait(primaryKeyTypes[i]);
-                primaryKeySerdes[i] = AqlSerializerDeserializerProvider.INSTANCE
+                primaryKeyTypeTraits[i] = TypeTraitProvider.INSTANCE.getTypeTrait(primaryKeyTypes[i]);
+                primaryKeySerdes[i] = SerializerDeserializerProvider.INSTANCE
                         .getSerializerDeserializer(primaryKeyTypes[i]);
             }
             RecordDescriptor searcgRecDesc = new RecordDescriptor(primaryKeySerdes, primaryKeyTypeTraits);
