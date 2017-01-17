@@ -20,6 +20,8 @@
 package org.apache.asterix.replication.functions;
 
 import org.apache.asterix.common.api.IDatasetLifecycleManager;
+import org.apache.asterix.common.context.DatasetLifecycleManager;
+import org.apache.asterix.common.transactions.LogRecord;
 import org.apache.asterix.transaction.management.service.recovery.RecoveryManager;
 import org.apache.hyracks.dataflow.common.data.accessors.ITupleReference;
 import org.apache.hyracks.storage.am.common.tuples.SimpleTupleReference;
@@ -39,6 +41,9 @@ public class ReplicationJob implements Runnable {
     private final byte newOp;
     private final IDatasetLifecycleManager datasetLifecycleManager;
 
+    private static int sleepDuration = 2000000000;
+    private static final int sleepDampFactor = 2;
+
     private static final Logger LOGGER = Logger.getLogger(ReplicationJob.class.getName());
 
     public ReplicationJob(long resourceId, int jobId, int datasetId, int PKHashValue, byte logType,
@@ -50,21 +55,30 @@ public class ReplicationJob implements Runnable {
         this.logType = logType;
         this.newOp = newOp;
         this.datasetLifecycleManager = datasetLifecycleManager;
-        ByteBuffer buffer = ByteBuffer.allocate(2000);
+        ByteBuffer buffer = ByteBuffer.allocate(SimpleTupleWriter.INSTANCE.getCopySpaceRequired(newValue) * 4);
         int before = buffer.position();
         // Clone new tuple contents.
         this.newValue = new SimpleTupleReference();
-        ((SimpleTupleReference) this.newValue).resetByTupleOffset(buffer, before);
+
+        ((SimpleTupleReference) this.newValue).resetByTupleOffset(buffer.array(), before);
+        ((SimpleTupleReference) this.newValue).setFieldCount(newValue.getFieldCount());
         SimpleTupleWriter.INSTANCE.writeTuple(newValue, buffer, before);
+        //((SimpleTupleReference) this.newValue).resetByTupleOffset(buffer.array(), before);
+        // TODO: Alt:
+        // method 1 -> Use system.arraycopy
+        // method 2 ->
     }
 
     @Override
     public void run() {
         try {
-            //Thread.sleep(100000);
+            sleepDuration /= sleepDampFactor;
+            LOGGER.info("Sleeping for "  + sleepDuration + " PK : " + PKHashValue);
+            Thread.sleep(sleepDuration);
             LOGGER.info("Replicating PKHash: " + PKHashValue);
             RecoveryManager.redo(datasetLifecycleManager, newValue, newOp, datasetId, resourceId);
             LOGGER.info("Replicated: " + PKHashValue);
+            ((DatasetLifecycleManager) datasetLifecycleManager).dumpState(System.out);
             //datasetLifecycleManager.close(resourceAbsolutePath);
         } catch (Exception e) {
             LOGGER.info("Failed to replicate: " + PKHashValue);

@@ -32,7 +32,7 @@ public class ExternalProperties extends AbstractProperties {
     public static final int QUERY_WEBPORT_DEFAULT = 19006;
 
     public static final String EXTERNAL_LOGLEVEL_KEY = "log.level";
-    public static final Level EXTERNAL_LOGLEVEL_DEFAULT = Level.WARNING;
+    public static final Level EXTERNAL_LOGLEVEL_DEFAULT = Level.INFO;
 
     public static final String EXTERNAL_APISERVER_KEY = "api.port";
     public static final int EXTERNAL_APISERVER_DEFAULT = 19002;

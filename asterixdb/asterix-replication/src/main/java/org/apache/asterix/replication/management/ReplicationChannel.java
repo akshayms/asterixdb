@@ -35,8 +35,13 @@ import java.util.concurrent.*;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
+import org.apache.asterix.common.api.IAppRuntimeContext;
 import org.apache.asterix.common.api.IDatasetLifecycleManager;
-import org.apache.asterix.common.api.ILocalResourceMetadata;
+import org.apache.asterix.common.transactions.IAppRuntimeContextProvider;
+import org.apache.asterix.common.transactions.ILogManager;
+import org.apache.asterix.common.transactions.LogRecord;
+import org.apache.asterix.common.transactions.LogSource;
+import org.apache.asterix.common.transactions.LogType;
 import org.apache.asterix.common.cluster.ClusterPartition;
 import org.apache.asterix.common.config.IPropertiesProvider;
 import org.apache.asterix.common.config.ReplicationProperties;
@@ -48,11 +53,7 @@ import org.apache.asterix.common.replication.IReplicationChannel;
 import org.apache.asterix.common.replication.IReplicationManager;
 import org.apache.asterix.common.replication.IReplicationThread;
 import org.apache.asterix.common.replication.ReplicaEvent;
-import org.apache.asterix.common.transactions.IAppRuntimeContextProvider;
-import org.apache.asterix.common.transactions.ILogManager;
-import org.apache.asterix.common.transactions.LogRecord;
-import org.apache.asterix.common.transactions.LogSource;
-import org.apache.asterix.common.transactions.LogType;
+import org.apache.asterix.common.transactions.*;
 import org.apache.asterix.common.utils.TransactionUtil;
 import org.apache.asterix.replication.functions.ReplicaFilesRequest;
 import org.apache.asterix.replication.functions.ReplicaIndexFlushRequest;
@@ -69,23 +70,18 @@ import org.apache.asterix.transaction.management.service.logging.LogReader;
 import org.apache.asterix.transaction.management.service.recovery.RecoveryManager;
 import org.apache.asterix.transaction.management.service.recovery.TxnId;
 import org.apache.asterix.transaction.management.service.transaction.TransactionManagementConstants;
-import org.apache.asterix.transaction.management.service.transaction.TransactionSubsystem;
-import org.apache.hive.com.esotericsoftware.kryo.serializers.DefaultSerializers;
 import org.apache.hyracks.api.application.INCApplicationContext;
 import org.apache.hyracks.api.exceptions.HyracksDataException;
 import org.apache.hyracks.api.job.JobIdFactory;
 import org.apache.hyracks.api.job.JobSpecification;
 import org.apache.hyracks.dataflow.common.data.accessors.ITupleReference;
-import org.apache.hyracks.storage.am.common.api.IMetaDataPageManager;
+import org.apache.hyracks.storage.am.common.tuples.SimpleTupleWriter;
 import org.apache.hyracks.storage.am.lsm.common.api.ILSMIndex;
 import org.apache.hyracks.storage.am.lsm.common.api.LSMOperationType;
 import org.apache.hyracks.storage.am.lsm.common.impls.AbstractLSMIndex;
 import org.apache.hyracks.storage.common.file.LocalResource;
 import org.apache.hyracks.util.StorageUtil;
 import org.apache.hyracks.util.StorageUtil.StorageUnit;
-import org.codehaus.groovy.transform.sc.ListOfExpressionsExpression;
-
-import javax.jdo.annotations.Persistent;
 
 /**
  * This class is used to receive and process replication requests from remote replicas or replica events from CC
@@ -544,12 +540,12 @@ public class ReplicationChannel extends Thread implements IReplicationChannel {
         private void materialize(LogRecord remoteLog) throws HyracksDataException, ACIDException {
             LOGGER.info("Materializing: " + remoteLog.getLogRecordForDisplay());
 
-            IAsterixAppRuntimeContextProvider appRuntimeContext =
+            IAppRuntimeContextProvider appRuntimeContext =
                     txnSubSystem.getAsterixAppRuntimeContextProvider();
             IDatasetLifecycleManager datasetLifecycleManager = appRuntimeContext.getDatasetLifecycleManager();
 
             ILSMIndex index = null;
-            ILocalResourceMetadata localResourceMetadata = null;
+            Resource localResourceMetadata = null;
 
             long resourceId = remoteLog.getResourceId();
             Map<Long, LocalResource> resourceMap = localResourceRepository.loadAndGetAllResources();
@@ -573,20 +569,13 @@ public class ReplicationChannel extends Thread implements IReplicationChannel {
             }
 
             // TODO: Can this be created at a different time?
-            String partitionIODevicePath = localResourceRepository.getPartitionPath(localResource.getPartition());
-            String resourceAbsolutePath =
-                    partitionIODevicePath + File.separator + localResource.getResourceName();
-            localResource.setResourcePath(resourceAbsolutePath);
-
             // TODO: Log this information. Can this operation be done at a different time?
-            index = (ILSMIndex) datasetLifecycleManager.get(resourceAbsolutePath);
+            localResourceMetadata = (Resource) localResource.getResource();
+            index = (ILSMIndex) datasetLifecycleManager.get(localResource.getPath());
             if (index == null) {
-                localResourceMetadata = (ILocalResourceMetadata) localResource.getResourceObject();
-                index = localResourceMetadata.createIndexInstance(appRuntimeContext,
-                        resourceAbsolutePath, localResource.getPartition(),
-                        localResourceRepository.getIODeviceNum(localResource.getPartition()));
-                datasetLifecycleManager.register(resourceAbsolutePath, index);
-                datasetLifecycleManager.open(resourceAbsolutePath);
+                index = localResourceMetadata.createIndexInstance(appRuntimeContext, localResource);
+                datasetLifecycleManager.register(localResource.getPath(), index);
+                datasetLifecycleManager.open(localResource.getPath());
                 // must be closed for each job ?
             }
             if (remoteLog.getLogType() == LogType.UPDATE) {
@@ -598,7 +587,7 @@ public class ReplicationChannel extends Thread implements IReplicationChannel {
             else {
 
             }
-            datasetLifecycleManager.close(resourceAbsolutePath);
+            //datasetLifecycleManager.close(localResource.getPath());
 
             txnSubSystem.getLockManager().unlock(new DatasetId(remoteLog.getDatasetId()), remoteLog.getPKHashValue(),
                     TransactionManagementConstants.LockManagerConstants.LockMode.X, txnCtx);
@@ -622,7 +611,7 @@ public class ReplicationChannel extends Thread implements IReplicationChannel {
             int upCount, ecCount, upsertCount, commitCount, abortCount, flushCount, unknown;
             upCount = ecCount = upsertCount = commitCount = abortCount = flushCount = unknown = 0;
             ILSMIndex index = null;
-            ILocalResourceMetadata localResourceMetadata = null;
+            Resource localResourceMetadata = null;
 
 
             while (buffer.hasRemaining()) {
@@ -660,31 +649,33 @@ public class ReplicationChannel extends Thread implements IReplicationChannel {
 //                                    }
                                     // TODO: Test this with worker thread dispatch.
 
+                                    long resourceId = remoteLog.getResourceId();
                                     Map<Long, LocalResource> resourceMap = localResourceRepository.loadAndGetAllResources();
-                                    LocalResource localResource = resourceMap.get(remoteLog.getResourceId());
-                                    String partitionIODevicePath = localResourceRepository.getPartitionPath(localResource.getPartition());
-                                    String resourceAbsolutePath =
-                                            partitionIODevicePath + File.separator + localResource.getResourceName();
-                                    localResource.setResourcePath(resourceAbsolutePath);
-                                    index = (ILSMIndex) datasetLifecycleManager.get(resourceAbsolutePath);
+                                    LocalResource localResource = resourceMap.get(resourceId);
 
+                                    localResourceMetadata = (Resource) localResource.getResource();
+                                    index = (ILSMIndex) datasetLifecycleManager.get(localResource.getPath());
                                     if (index == null) {
-                                        localResourceMetadata = (ILocalResourceMetadata) localResource.getResourceObject();
-                                        index = localResourceMetadata.createIndexInstance(txnSubSystem.getAsterixAppRuntimeContextProvider(),
-                                                resourceAbsolutePath, localResource.getPartition(),
-                                                localResourceRepository.getIODeviceNum(localResource.getPartition()));
-                                        datasetLifecycleManager.register(resourceAbsolutePath, index);
-                                        datasetLifecycleManager.open(resourceAbsolutePath);
+                                        index = localResourceMetadata.createIndexInstance(txnSubSystem.getAsterixAppRuntimeContextProvider(), localResource);
+                                        datasetLifecycleManager.register(localResource.getPath(), index);
+                                        datasetLifecycleManager.open(localResource.getPath());
                                         // must be closed for each job ?
                                     }
+                                    if (remoteLog.getLogType() != LogType.ENTITY_COMMIT && remoteLog.getLogType() !=
+                                            LogType.UPSERT_ENTITY_COMMIT) {
+                                        ReplicationJob rJob = new ReplicationJob(remoteLog.getResourceId(), remoteLog.getJobId(), remoteLog.getDatasetId(),
+                                                remoteLog.getPKHashValue(), remoteLog.getLogType(), remoteLog.getNewValue(), remoteLog.getNewOp(),
+                                                txnSubSystem.getAsterixAppRuntimeContextProvider().getDatasetLifecycleManager());
+                                        LOGGER.info("Bytes of new value: " + SimpleTupleWriter.INSTANCE.bytesRequired(remoteLog.getNewValue()));
+                                        //updateLocalOpTracker();
+                                        LOGGER.info("--Submitting for replication: " + remoteLog.getLogRecordForDisplay());
+                                        //rJob.run();
+                                        materializationThreads.execute(rJob);
+                                        //materializationThreads.awaitTermination(10, TimeUnit.DAYS);
+                                        LOGGER.info("--REPLICATION COMPLETE-- : " + remoteLog.getLogRecordForDisplay());
+                                    } // else close dataset lifecycle manager?
 
-                                    ReplicationJob rJob = new ReplicationJob(remoteLog.getResourceId(), remoteLog
-                                            .getJobId(), remoteLog.getDatasetId(), remoteLog.getPKHashValue(),
-                                            remoteLog.getLogType(), remoteLog.getNewValue(), remoteLog.getNewOp(),
-                                            txnSubSystem.getAsterixAppRuntimeContextProvider()
-                                                    .getDatasetLifecycleManager());
-                                    updateLocalOpTracker();
-                                    materializationThreads.execute(rJob);
+                                    //materialize(remoteLog);
 //                                    materializationThreads.execute(() -> {
 //                                        try {
 //                                            LOGGER.info("Waiting to write " + remoteLog.getLogRecordForDisplay());

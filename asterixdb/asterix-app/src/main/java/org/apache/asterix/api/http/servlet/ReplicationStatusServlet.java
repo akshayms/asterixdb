@@ -20,7 +20,6 @@ package org.apache.asterix.api.http.servlet;
 
 import org.apache.asterix.common.cluster.ClusterPartition;
 import org.apache.asterix.replication.management.ReplicationChannel;
-import org.apache.asterix.runtime.util.AsterixAppContextInfo;
 
 import javax.servlet.http.HttpServlet;
 import javax.servlet.http.HttpServletRequest;

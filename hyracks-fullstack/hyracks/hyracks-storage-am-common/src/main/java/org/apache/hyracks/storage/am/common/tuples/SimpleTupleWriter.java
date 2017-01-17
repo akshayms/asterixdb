@@ -74,7 +74,7 @@ public class SimpleTupleWriter implements ITreeIndexTupleWriter {
         int nullFlagsBytes = getNullFlagsBytes(tuple);
         int fieldSlotsBytes = getFieldSlotsBytes(tuple);
         for (int i = 0; i < nullFlagsBytes; i++) {
-            targetBuf[runner++] = (byte) 0xAA;
+            targetBuf[runner++] = (byte) 0;
         }
         runner += fieldSlotsBytes;
         int fieldEndOff = 0;
@@ -92,7 +92,7 @@ public class SimpleTupleWriter implements ITreeIndexTupleWriter {
         int runner = targetOff;
         int nullFlagsBytes = getNullFlagsBytes(tuple, startField, numFields);
         for (int i = 0; i < nullFlagsBytes; i++) {
-            targetBuf[runner++] = (byte) 0xAA;
+            targetBuf[runner++] = (byte) 0;
         }
         runner += getFieldSlotsBytes(tuple, startField, numFields);
 
@@ -110,7 +110,7 @@ public class SimpleTupleWriter implements ITreeIndexTupleWriter {
     }
 
     protected int getNullFlagsBytes(ITupleReference tuple) {
-        return (int) Math.ceil(tuple.getFieldCount() / 4.0);
+        return (int) Math.ceil(tuple.getFieldCount() / 8.0);
     }
 
     protected int getFieldSlotsBytes(ITupleReference tuple) {
@@ -118,7 +118,7 @@ public class SimpleTupleWriter implements ITreeIndexTupleWriter {
     }
 
     protected int getNullFlagsBytes(ITupleReference tuple, int startField, int numFields) {
-        return (int) Math.ceil(numFields / 4.0);
+        return (int) Math.ceil(numFields / 8.0);
     }
 
     protected int getFieldSlotsBytes(ITupleReference tuple, int startField, int numFields) {
