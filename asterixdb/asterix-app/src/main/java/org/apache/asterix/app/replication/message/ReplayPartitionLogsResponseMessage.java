@@ -16,27 +16,32 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-package org.apache.asterix.runtime.message;
+package org.apache.asterix.app.replication.message;
 
-import org.apache.asterix.common.messaging.api.IApplicationMessage;
-import org.apache.asterix.runtime.util.ClusterStateManager;
+import java.util.Set;
+
+import org.apache.asterix.common.replication.INCLifecycleMessage;
+import org.apache.asterix.runtime.util.AppContextInfo;
 import org.apache.hyracks.api.exceptions.HyracksDataException;
 import org.apache.hyracks.api.service.IControllerService;
 
-public class TakeoverPartitionsResponseMessage implements IApplicationMessage {
+public class ReplayPartitionLogsResponseMessage implements INCLifecycleMessage {
 
     private static final long serialVersionUID = 1L;
-    private final Integer[] partitions;
+    private final Set<Integer> partitions;
     private final String nodeId;
-    private final long requestId;
 
-    public TakeoverPartitionsResponseMessage(long requestId, String nodeId, Integer[] partitionsToTakeover) {
-        this.requestId = requestId;
+    public ReplayPartitionLogsResponseMessage(String nodeId, Set<Integer> partitions) {
+        this.partitions = partitions;
         this.nodeId = nodeId;
-        this.partitions = partitionsToTakeover;
     }
 
-    public Integer[] getPartitions() {
+    @Override
+    public void handle(IControllerService cs) throws HyracksDataException, InterruptedException {
+        AppContextInfo.INSTANCE.getFaultToleranceStrategy().process(this);
+    }
+
+    public Set<Integer> getPartitions() {
         return partitions;
     }
 
@@ -44,17 +49,8 @@ public class TakeoverPartitionsResponseMessage implements IApplicationMessage {
         return nodeId;
     }
 
-    public long getRequestId() {
-        return requestId;
-    }
-
     @Override
-    public void handle(IControllerService cs) throws HyracksDataException, InterruptedException {
-        ClusterStateManager.INSTANCE.processPartitionTakeoverResponse(this);
-    }
-
-    @Override
-    public String toString() {
-        return TakeoverPartitionsResponseMessage.class.getSimpleName();
+    public MessageType getType() {
+        return MessageType.REPLAY_LOGS_RESPONSE;
     }
 }

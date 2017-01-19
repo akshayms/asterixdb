@@ -16,33 +16,45 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-package org.apache.asterix.runtime.message;
+package org.apache.asterix.app.replication.message;
 
-import org.apache.asterix.common.messaging.api.IApplicationMessage;
-import org.apache.asterix.runtime.util.ClusterStateManager;
+import java.util.Set;
+
+import org.apache.asterix.runtime.message.AbstractFailbackPlanMessage;
+import org.apache.asterix.runtime.util.AppContextInfo;
 import org.apache.hyracks.api.exceptions.HyracksDataException;
 import org.apache.hyracks.api.service.IControllerService;
 
-public class TakeoverMetadataNodeResponseMessage implements IApplicationMessage {
+public class CompleteFailbackResponseMessage extends AbstractFailbackPlanMessage {
 
     private static final long serialVersionUID = 1L;
-    private final String nodeId;
+    private final Set<Integer> partitions;
 
-    public TakeoverMetadataNodeResponseMessage(String nodeId) {
-        this.nodeId = nodeId;
+    public CompleteFailbackResponseMessage(long planId, int requestId, Set<Integer> partitions) {
+        super(planId, requestId);
+        this.partitions = partitions;
     }
 
-    public String getNodeId() {
-        return nodeId;
-    }
-
-    @Override
-    public void handle(IControllerService cs) throws HyracksDataException, InterruptedException {
-        ClusterStateManager.INSTANCE.processMetadataNodeTakeoverResponse(this);
+    public Set<Integer> getPartitions() {
+        return partitions;
     }
 
     @Override
     public String toString() {
-        return TakeoverMetadataNodeResponseMessage.class.getSimpleName();
+        StringBuilder sb = new StringBuilder();
+        sb.append(CompleteFailbackResponseMessage.class.getSimpleName());
+        sb.append(" Plan ID: " + planId);
+        sb.append(" Partitions: " + partitions);
+        return sb.toString();
+    }
+
+    @Override
+    public void handle(IControllerService cs) throws HyracksDataException, InterruptedException {
+        AppContextInfo.INSTANCE.getFaultToleranceStrategy().process(this);
+    }
+
+    @Override
+    public MessageType getType() {
+        return MessageType.COMPLETE_FAILBACK_RESPONSE;
     }
 }

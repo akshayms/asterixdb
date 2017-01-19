@@ -30,11 +30,13 @@ import java.util.List;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
-import org.apache.asterix.common.config.PropertiesAccessor;
+import org.apache.asterix.common.api.IClusterManagementWork.ClusterState;
 import org.apache.asterix.common.config.GlobalConfig;
+import org.apache.asterix.common.config.PropertiesAccessor;
 import org.apache.asterix.common.exceptions.AsterixException;
 import org.apache.asterix.hyracks.bootstrap.CCApplicationEntryPoint;
 import org.apache.asterix.hyracks.bootstrap.NCApplicationEntryPoint;
+import org.apache.asterix.runtime.util.ClusterStateManager;
 import org.apache.commons.io.FileUtils;
 import org.apache.hyracks.api.client.HyracksConnection;
 import org.apache.hyracks.api.client.IHyracksClientConnection;
@@ -99,6 +101,12 @@ public class AsterixHyracksIntegrationUtil {
         //wait until all NCs complete their startup
         for (Thread thread : startupThreads) {
             thread.join();
+        }
+        // Wait until cluster becomes active
+        synchronized (ClusterStateManager.INSTANCE) {
+            while (ClusterStateManager.INSTANCE.getState() != ClusterState.ACTIVE) {
+                ClusterStateManager.INSTANCE.wait();
+            }
         }
         hcc = new HyracksConnection(cc.getConfig().clientNetIpAddress, cc.getConfig().clientNetPort);
         ncs = nodeControllers.toArray(new NodeControllerService[nodeControllers.size()]);

@@ -1005,7 +1005,7 @@ public class TestExecutor {
                 }
                 break;
             case "lib": // expected format <dataverse-name> <library-name>
-                        // <library-directory>
+                            // <library-directory>
                         // TODO: make this case work well with entity names containing spaces by
                         // looking for \"
                 lines = statement.split("\n");
@@ -1060,6 +1060,21 @@ public class TestExecutor {
             throw new IllegalArgumentException("Could not retrieve node pid from admin API");
         }
         ProcessBuilder pb = new ProcessBuilder("kill", "-9", Integer.toString(nodePid));
+        pb.start().waitFor();
+        // Delete NC's transaction logs to re-initialize it as a new NC.
+        deleteNCTxnLogs(nodeId, cUnit);
+    }
+
+    private void deleteNCTxnLogs(String nodeId, CompilationUnit cUnit) throws Exception {
+        OutputFormat fmt = OutputFormat.forCompilationUnit(cUnit);
+        String endpoint = "/admin/cluster";
+        InputStream executeJSONGet = executeJSONGet(fmt, "http://" + host + ":" + port + endpoint);
+        StringWriter actual = new StringWriter();
+        IOUtils.copy(executeJSONGet, actual, StandardCharsets.UTF_8);
+        String config = actual.toString();
+        ObjectMapper om = new ObjectMapper();
+        String logDir = om.readTree(config).findPath("transaction.log.dirs").get(nodeId).asText();
+        ProcessBuilder pb = new ProcessBuilder("rm", "-rf", logDir);
         pb.start().waitFor();
     }
 
