@@ -19,8 +19,12 @@
 
 package org.apache.asterix.replication.management;
 
+import org.apache.asterix.replication.functions.ReplicationJob;
+
+import java.nio.ByteBuffer;
 import java.util.PriorityQueue;
 import java.util.Queue;
+import java.util.logging.LogRecord;
 
 /**
  * Created by msa on 1/17/17.
@@ -28,12 +32,18 @@ import java.util.Queue;
 public class ReplicationJobManager {
 
     private final Queue replicationQ;
+    private final ByteBuffer logPage;
 
     private static final int DEFAULT_SIZE = 20;
+    private static final int DEFAULT_LOG_PAGE_SIZE = 500000;
 
     public ReplicationJobManager() {
         this.replicationQ = new PriorityQueue(DEFAULT_SIZE);
-        replicationQ.notify();
+        this.logPage = ByteBuffer.allocate(DEFAULT_LOG_PAGE_SIZE);
     }
 
+    public void submit(LogRecord logRecord, ReplicationJob replicationJob) {
+        // TODO: replicate the logRecord newValue content into a bytebuffer and then push it into the queue;
+        replicationQ.add(replicationJob);
+    }
 }
