@@ -22,17 +22,15 @@
   <metadata_node>nc1</metadata_node>
 
   <high_availability>
-    <enabled>false</enabled>
+    <enabled>true</enabled>
     <data_replication>
-      <strategy>metadata_only</strategy>
+      <strategy>chained_declustering</strategy>
       <replication_port>2016</replication_port>
+      <replication_factor>2</replication_factor>
       <replication_time_out>30</replication_time_out>
     </data_replication>
     <fault_tolerance>
-       <strategy>metadata_node</strategy>
-       <replica>
-         <node_id>nc2</node_id>
-       </replica>
+       <strategy>auto</strategy>
     </fault_tolerance>
   </high_availability>
 

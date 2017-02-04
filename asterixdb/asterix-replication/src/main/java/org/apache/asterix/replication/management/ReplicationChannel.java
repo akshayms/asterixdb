@@ -121,6 +121,8 @@ public class ReplicationChannel extends Thread implements IReplicationChannel {
     private final PersistentLocalResourceRepository localResourceRepository;
     private final ExecutorService materializationThreads;
 
+    private final StreamingReplicationManager streamingReplicationManager;
+
     // TODO: Change to (RID, PKHashValue, lastOpLSN)
     public Map<Long, Map<Integer, Long>> inflightOps;
     private OpTrackerProfiler profiler;
@@ -169,10 +171,13 @@ public class ReplicationChannel extends Thread implements IReplicationChannel {
 
         inflightOps = new HashMap<>();
         PKstatus = new HashMap<>();
-        LOGGER.info("Starting Hot-Standby OpTracker Thread");
+        LOGGER.log(Level.INFO,"Starting Hot-Standby OpTracker Thread");
         this.profiler = new OpTrackerProfiler(60000);
         this.profiler.start();
         materializationThreads = Executors.newCachedThreadPool(appContext.getThreadFactory());
+        this.streamingReplicationManager = new StreamingReplicationManager(txnSubSystem,
+                asterixAppRuntimeContextProvider);
+        LOGGER.log(Level.INFO, "REPL: Initialized replicationchannel thread!");
     }
 
     public synchronized String printOpStatus() {
@@ -214,7 +219,7 @@ public class ReplicationChannel extends Thread implements IReplicationChannel {
                 socketChannel = serverSocketChannel.accept();
                 socketChannel.configureBlocking(true);
                 //start a new thread to handle the request
-                LOGGER.info("New replication thread requested, creating new replication thread");
+                LOGGER.log(Level.INFO, "New replication thread requested, creating new replication thread");
                 replicationThreads.execute(new ReplicationThread(socketChannel));
             }
         } catch (IOException e) {
@@ -633,11 +638,12 @@ public class ReplicationChannel extends Thread implements IReplicationChannel {
             upCount = ecCount = upsertCount = commitCount = abortCount = flushCount = unknown = 0;
             ILSMIndex index = null;
             Resource localResourceMetadata = null;
+            int logSize = -1;
 
 
             while (buffer.hasRemaining()) {
                 //get rid of log size
-                inBuffer.getInt();
+                logSize = inBuffer.getInt();
                 //Deserialize log
                 //remoteLog = new LogRecord();
                 remoteLog.readRemoteLog(inBuffer);
@@ -657,6 +663,9 @@ public class ReplicationChannel extends Thread implements IReplicationChannel {
                             // TODO: What happens on failure here?
                             logManager.log(remoteLog);
                             LOGGER.info("After LSN: " + remoteLog.getLSN());
+                            streamingReplicationManager.submit(remoteLog);
+
+/*
                             // TODO: What happens on failure here?
                             if (remoteLog.getLogType() == LogType.UPDATE || remoteLog.getLogType() == LogType.ENTITY_COMMIT) {
                                 try {
@@ -691,7 +700,7 @@ public class ReplicationChannel extends Thread implements IReplicationChannel {
                                         //updateLocalOpTracker();
                                         LOGGER.info("--Submitting for replication: " + remoteLog.getLogRecordForDisplay());
                                         //rJob.run();
-                                        materializationThreads.execute(rJob);
+                                       // materializationThreads.execute(rJob);
                                         //materializationThreads.awaitTermination(10, TimeUnit.DAYS);
                                         LOGGER.info("--REPLICATION COMPLETE-- : " + remoteLog.getLogRecordForDisplay());
                                     } // else close dataset lifecycle manager?
@@ -715,7 +724,7 @@ public class ReplicationChannel extends Thread implements IReplicationChannel {
                                     LOGGER.info("COULD NOT MATERIALIZE! : " + remoteLog.getLogRecordForDisplay());
                                     e.printStackTrace();
                                 }
-                            }
+                            }*/
                         }
                         break;
                     case LogType.JOB_COMMIT:
