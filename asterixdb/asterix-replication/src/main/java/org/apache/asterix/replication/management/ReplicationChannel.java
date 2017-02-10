@@ -37,6 +37,7 @@ import java.util.logging.Logger;
 
 import org.apache.asterix.common.api.IAppRuntimeContext;
 import org.apache.asterix.common.api.IDatasetLifecycleManager;
+import org.apache.asterix.common.config.MetadataProperties;
 import org.apache.asterix.common.transactions.IAppRuntimeContextProvider;
 import org.apache.asterix.common.transactions.ILogManager;
 import org.apache.asterix.common.transactions.LogRecord;
@@ -137,7 +138,8 @@ public class ReplicationChannel extends Thread implements IReplicationChannel {
 
     public ReplicationChannel(String nodeId, ReplicationProperties replicationProperties, ILogManager logManager,
             IReplicaResourcesManager replicaResoucesManager, IReplicationManager replicationManager,
-            INCApplicationContext appContext, IAppRuntimeContextProvider asterixAppRuntimeContextProvider) {
+            INCApplicationContext appContext, IAppRuntimeContextProvider asterixAppRuntimeContextProvider,
+            MetadataProperties metadataProperties) {
         this.logManager = logManager;
         this.localNodeID = nodeId;
         this.replicaResourcesManager = (ReplicaResourcesManager) replicaResoucesManager;
@@ -176,7 +178,7 @@ public class ReplicationChannel extends Thread implements IReplicationChannel {
         this.profiler.start();
         materializationThreads = Executors.newCachedThreadPool(appContext.getThreadFactory());
         this.streamingReplicationManager = new StreamingReplicationManager(txnSubSystem,
-                asterixAppRuntimeContextProvider);
+                asterixAppRuntimeContextProvider, metadataProperties);
         LOGGER.log(Level.INFO, "REPL: Initialized replicationchannel thread!");
     }
 

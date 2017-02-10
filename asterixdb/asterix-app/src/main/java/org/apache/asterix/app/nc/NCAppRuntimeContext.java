@@ -238,7 +238,7 @@ public class NCAppRuntimeContext implements IAppRuntimeContext, IPropertiesProvi
             //initialize replication channel
             replicationChannel = new ReplicationChannel(nodeId, replicationProperties, txnSubsystem.getLogManager(),
                     replicaResourcesManager, replicationManager, ncApplicationContext,
-                    asterixAppRuntimeContextProvider);
+                    asterixAppRuntimeContextProvider, metadataProperties);
 
             remoteRecoveryManager = new RemoteRecoveryManager(replicationManager, this, replicationProperties);
 

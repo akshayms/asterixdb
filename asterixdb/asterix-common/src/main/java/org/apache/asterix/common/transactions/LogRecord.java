@@ -193,10 +193,10 @@ public class LogRecord implements ILogRecord {
             buffer.putInt(nodeId.length());
             buffer.put(nodeId.getBytes());
         }
-        if (logType == LogType.ENTITY_COMMIT || logType == LogType.JOB_COMMIT) {
-            System.out.println("=========> PKHASH: " + PKHashValue + " === RID: " + resourceId + " TYPE: " + LogType
-                    .toString(logType));
-        }
+//        if (logType == LogType.ENTITY_COMMIT || logType == LogType.JOB_COMMIT) {
+//            System.out.println("=========> PKHASH: " + PKHashValue + " === RID: " + resourceId + " TYPE: " + LogType
+//                    .toString(logType));
+//        }
     }
 
     private void writePKValue(ByteBuffer buffer) {
