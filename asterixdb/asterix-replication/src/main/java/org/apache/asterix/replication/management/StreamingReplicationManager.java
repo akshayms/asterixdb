@@ -57,7 +57,7 @@ public class StreamingReplicationManager {
     private List<Object> partitionMonitors;
 
     private static final int DEFAULT_SIZE = 20;
-    private static final int DEFAULT_LOG_PAGE_SIZE = 10000;
+    private static final int DEFAULT_LOG_PAGE_SIZE = 5000;
     private static final int MAX_QUEUE_LENGTH = 15;
     private Object monitor = new Object();
     private final int ACTIVE_LOG_INDEX = 0;
@@ -218,11 +218,11 @@ public class StreamingReplicationManager {
                             }
                         }
                     }
-                    buffer.clear();
-                    freeBufferQ.offer(buffer);
-                    System.out.println("Offering buffer " + partition);
-                }
+                buffer.clear();
+                freeBufferQ.offer(buffer);
+                System.out.println("Offering buffer " + partition);
             }
+        }
 
         private void materialize() {
             long resourceId = logRecord.getResourceId();
