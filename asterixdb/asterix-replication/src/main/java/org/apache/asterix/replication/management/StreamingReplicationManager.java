@@ -66,6 +66,8 @@ public class StreamingReplicationManager {
     //private final List<AtomicInteger> counters;
     private final Object bufferFlipMonitor = new Object();
 
+    private Map<Long, LocalResource> resourceMap;
+
 
     public StreamingReplicationManager(ITransactionSubsystem txnSubSystem, IAppRuntimeContextProvider
             asterixAppRuntimeContextProvider, MetadataProperties metadataProperties) {
@@ -76,6 +78,9 @@ public class StreamingReplicationManager {
         this.partitionWriteBuffer = new ConcurrentHashMap<>();
         this.partitionMonitors = new ArrayList<>();
         this.freeBufferQ = new LinkedBlockingQueue<>();
+        this.localResourceRepository = txnSubSystem
+                .getAsterixAppRuntimeContextProvider().getLocalResourceRepository();
+        //this.nodePartitions = ((PersistentLocalResourceRepository) localResourceRepository).getInactivePartitions();
         nodePartitions.stream().forEach(partitionId -> {
             // 3 buffers to start out with per partition on average.
             freeBufferQ.offer(ByteBuffer.allocate(DEFAULT_LOG_PAGE_SIZE));
@@ -90,12 +95,20 @@ public class StreamingReplicationManager {
         freeBufferQ.offer(ByteBuffer.allocate(DEFAULT_LOG_PAGE_SIZE));
         freeBufferQ.offer(ByteBuffer.allocate(DEFAULT_LOG_PAGE_SIZE));
         freeBufferQ.offer(ByteBuffer.allocate(DEFAULT_LOG_PAGE_SIZE));
-        this.localResourceRepository = (PersistentLocalResourceRepository) txnSubSystem
-                .getAsterixAppRuntimeContextProvider().getLocalResourceRepository();
+
         this.datasetLifecycleManager = asterixAppRuntimeContextProvider.getDatasetLifecycleManager();
         startThreads();
         LOGGER.log(Level.INFO, "REPL: Streaming replication initialized!");
+        try {
+            refreshLocalResourceMap();
+        } catch (HyracksDataException e) {
+            e.printStackTrace();
+        }
         //this.counters = new ArrayList<>(numPartitions);
+    }
+
+    public synchronized void refreshLocalResourceMap() throws HyracksDataException {
+        this.resourceMap = ((PersistentLocalResourceRepository) localResourceRepository).loadAndGetAllResources();
     }
 
     public void startThreads() {
@@ -252,7 +265,14 @@ public class StreamingReplicationManager {
             long resourceId = logRecord.getResourceId();
             if (logRecord.getLogType() == LogType.UPDATE) {
                 try {
-                    LocalResource localResource = ((PersistentLocalResourceRepository) localResourceRepository).loadAndGetAllResources().get(resourceId);
+                    LocalResource localResource = resourceMap.get(resourceId);
+                    if (localResource == null) {
+                        LOGGER.log(Level.INFO, "Local resource " + resourceId + " not found!, refreshing the local "
+                                + "resource repository.");
+                        synchronized (StreamingReplicationManager.class) {
+                            refreshLocalResourceMap();
+                        }
+                    }
                     Resource localResourceMetadata = (Resource) localResource.getResource();
                     ILSMIndex index = (ILSMIndex) datasetLifecycleManager.get(localResource.getPath());
                     if (index == null) {
