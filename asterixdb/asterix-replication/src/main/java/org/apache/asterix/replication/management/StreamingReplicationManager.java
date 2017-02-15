@@ -19,11 +19,9 @@
 
 package org.apache.asterix.replication.management;
 
-import com.couchbase.client.deps.io.netty.buffer.ByteBuf;
 import org.apache.asterix.common.api.IDatasetLifecycleManager;
 import org.apache.asterix.common.config.MetadataProperties;
 import org.apache.asterix.common.transactions.*;
-import org.apache.asterix.runtime.util.AppContextInfo;
 import org.apache.asterix.transaction.management.resource.PersistentLocalResourceRepository;
 import org.apache.asterix.transaction.management.service.recovery.RecoveryManager;
 import org.apache.commons.lang.NotImplementedException;
@@ -31,12 +29,12 @@ import org.apache.hyracks.api.exceptions.HyracksDataException;
 import org.apache.hyracks.storage.am.lsm.common.api.ILSMIndex;
 import org.apache.hyracks.storage.common.file.ILocalResourceRepository;
 import org.apache.hyracks.storage.common.file.LocalResource;
-import sun.rmi.runtime.Log;
 
 import java.nio.ByteBuffer;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.*;
 import java.util.concurrent.*;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -57,7 +55,7 @@ public class StreamingReplicationManager {
     private List<Object> partitionMonitors;
 
     private static final int DEFAULT_SIZE = 20;
-    private static final int DEFAULT_LOG_PAGE_SIZE = 5000;
+    private static final int DEFAULT_LOG_PAGE_SIZE = 15000;
     private static final int MAX_QUEUE_LENGTH = 15;
     private Object monitor = new Object();
     private final int ACTIVE_LOG_INDEX = 0;
@@ -66,6 +64,7 @@ public class StreamingReplicationManager {
     private final ILocalResourceRepository localResourceRepository;
     private final IDatasetLifecycleManager datasetLifecycleManager;
     //private final List<AtomicInteger> counters;
+    private final Object bufferFlipMonitor = new Object();
 
 
     public StreamingReplicationManager(ITransactionSubsystem txnSubSystem, IAppRuntimeContextProvider
@@ -106,41 +105,19 @@ public class StreamingReplicationManager {
                 partitionReplicationQs.get(partition), partitionWriteBuffer.get(partition))));
     }
 
-    public void reconstructAndReplayTest(ByteBuffer buffer) {
-        // TODO: Test if this method will work in replaying the logs after cloning the new value into buffer.
-        ILogRecord record = new LogRecord();
-        int size = buffer.getInt();
-        record.readRemoteLog(buffer);
-        // replay the log record here. (call redo or materialize?)
-    }
-
-    public void bufferCopy(ILogRecord logRecord) {
-        int resourcePartition = logRecord.getResourcePartition();
-        ByteBuffer inactiveBuffer = getWriteBufferForPartition(resourcePartition);
-        BlockingQueue replQ = partitionReplicationQs.get(resourcePartition);
-        int size = logRecord.getLogSize();
-        LOGGER.log(Level.INFO, "REPL: Writing log to buffer: " + logRecord.getLogRecordForDisplay());
-        if (inactiveBuffer.remaining() < size + Integer.BYTES) {
-            LOGGER.log(Level.INFO, "REPL: LOG BUFFER IS FULL!");
-            //inactiveBuffer.putInt(size);
-            synchronized (partitionWriteBuffer) {
-
-                inactiveBuffer.flip();
-                replQ.offer(inactiveBuffer);
-                partitionWriteBuffer.remove(resourcePartition);
-                System.out.println("Pushing buffer for partition: " + resourcePartition);
-                try {
-                    ByteBuffer newBuffer = freeBufferQ.take();
-                    partitionWriteBuffer.put(resourcePartition, newBuffer);
-                    // overwriting old buffer placed in q?
-                    inactiveBuffer = newBuffer;
-                    inactiveBuffer.clear();
-                } catch (InterruptedException e) {
-                    e.printStackTrace();
-                }
+    public void bufferCopy(ILogRecord logRecord) throws InterruptedException {
+        int partitionId = logRecord.getResourcePartition();
+        int logSize = logRecord.getRemoteLogSize(); // TODO: logSize or remoteLogSize?
+        synchronized (partitionMonitors.get(partitionId)) {
+            ByteBuffer writeBuffer = partitionWriteBuffer.get(partitionId);
+            if (writeBuffer.remaining() < logSize) {
+                LOGGER.log(Level.INFO, "REPL: RP" + partitionId + " write buffer is full, flushing it to Q");
+                flushWriteBufferToQ(partitionId);
+                writeBuffer = partitionWriteBuffer.get(partitionId);
             }
+            logRecord.writeRemoteLogRecord(writeBuffer);
+            partitionMonitors.get(partitionId).notify();
         }
-        logRecord.writeRemoteLogRecord(inactiveBuffer);
     }
 
     private synchronized ByteBuffer flipBuffers(ByteBuffer inactiveBuffer, int resourcePartition) {
@@ -156,12 +133,12 @@ public class StreamingReplicationManager {
     }
 
     public synchronized void submit(ILogRecord logRecord) {
-        bufferCopy(logRecord);
+        try {
+            bufferCopy(logRecord);
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
 
-    }
-
-    private int getLocalPartitions() {
-        return AppContextInfo.INSTANCE.getMetadataProperties().getClusterPartitions().keySet().size();
     }
 
     private ILogRecord readFromBuffer(ByteBuffer buffer) {
@@ -170,6 +147,46 @@ public class StreamingReplicationManager {
             // TODO: Construct LogRecord here from buffer.
         }
         return logRecord;
+    }
+
+    private boolean flushReplicationQ(int partition) {
+        return false;
+    }
+
+    private boolean flushWriteBufferToQ(int partition) throws InterruptedException {
+        synchronized (partitionMonitors.get(partition)) {
+            ByteBuffer currentBuffer = getWriteBufferForPartition(partition);
+            if (currentBuffer.position() == 0) {
+                return false;
+            }
+            Instant now = Instant.now();
+            ByteBuffer freeBuffer = freeBufferQ.take();
+            Instant end = Instant.now();
+            LOGGER.log(Level.INFO, "REPL: Partition " + partition + " waited " + Duration.between(now, end).toMillis
+                    () + "ms");
+            freeBuffer.clear();
+            partitionWriteBuffer.replace(partition, freeBuffer);
+            currentBuffer.flip();
+            partitionReplicationQs.get(partition).offer(currentBuffer);
+            partitionMonitors.get(partition).notify();
+        }
+        return true;
+    }
+
+    private boolean requestForWork(int partition) {
+        synchronized (partitionWriteBuffer.get(partition)) {
+            while (getWriteBufferForPartition(partition).position() == 0) {
+                try {
+                    wait();
+                    if (getWriteBufferForPartition(partition).position() != 0) {
+
+                    }
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
+                }
+            }
+        }
+        return false;
     }
 
     private class ReplicationMaterialzationThread implements Runnable {
@@ -181,7 +198,7 @@ public class StreamingReplicationManager {
         private Object completedMonitor;
         private boolean readyToMaterialize;
 
-        public ReplicationMaterialzationThread(int partition, BlockingQueue jobQ, ByteBuffer buffer) {
+        public ReplicationMaterialzationThread(int partition, BlockingQueue<ByteBuffer> jobQ, ByteBuffer buffer) {
             this.partition = partition;
             this.jobQ = jobQ;
             this.logRecord = new LogRecord();
@@ -193,34 +210,41 @@ public class StreamingReplicationManager {
             Thread.currentThread().setName(name);
             while (true) {
                 try {
-                    buffer = jobQ.take();
-                    // Pull the buffer from here when the thread is empty. Expectation is for this to be slower than
-                    // the other thread since this is doing disk ops and the other is reading off a network socket
-                    // for data to come in.
-                    LOGGER.log(Level.INFO, name + "read buffer of size " + buffer.limit());
-                } catch (InterruptedException e) {
-                    e.printStackTrace();
-                }
-                LOGGER.log(Level.INFO, name + "REPL: read from q!!!");
-                    while (buffer.position() < buffer.limit()) {
-                        LOGGER.log(Level.INFO, name + "Before position: " + buffer.position());
-                        logRecord.readRemoteLog(buffer);
-                        LOGGER.log(Level.INFO, name + "After position: " + buffer.position());
-                        LOGGER.log(Level.INFO, name + "REPL: Re-read" + logRecord.getLogRecordForDisplay());
-                        try {
-                            materialize();
-                        }
-                        catch (Exception e) {
-                            e.printStackTrace();
-                            LOGGER.log(Level.INFO, name + "After position " + buffer.position());
-                            if (buffer.position() < buffer.limit()) {
+                    synchronized (partitionMonitors.get(partition)) {
+                        while (jobQ.isEmpty()) {
+                            LOGGER.log(Level.INFO, "REPL: " + name + " waiting because jobQ is empty");
+                            partitionMonitors.get(partition).wait();
+                            LOGGER.log(Level.INFO, "REPL: " + name + ": Requesting a flush");
+                            if (!flushWriteBufferToQ(partition)) {
+                                LOGGER.log(Level.INFO, "REPL:" + name + ": Flush buffer failed for thread because of empty buffer");
+                                continue;
+                            } else {
+                                LOGGER.log(Level.INFO, "REPL: " + name + ": Successful buffer switch");
                                 break;
                             }
                         }
                     }
-                buffer.clear();
-                freeBufferQ.offer(buffer);
-                System.out.println("Offering buffer " + partition);
+                    buffer = jobQ.take();
+                    int counter = 0;
+                    Instant start = Instant.now();
+                    while (buffer.hasRemaining()) {
+                        logRecord.readRemoteLog(buffer);
+                        counter++;
+                        LOGGER.log(Level.INFO, "REPL: " + name + " : read log record " + logRecord.getLogRecordForDisplay());
+                        try {
+                            materialize();
+                        } catch (Exception e) {
+                            LOGGER.log(Level.INFO, "REPL: " + name + " " +logRecord.getLogRecordForDisplay());
+                        }
+                    }
+                    Instant end = Instant.now();
+                    LOGGER.log(Level.INFO, "REPL: STATS: " + name + " Num Logs in prev buffer: " + counter + " JOBQ "
+                            + "has" + jobQ.size() + " buffers waiting! and time to complete " + Duration.between(start, end).toMillis());
+                    buffer.clear();
+                    freeBufferQ.offer(buffer);
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
+                }
             }
         }
 
@@ -237,7 +261,8 @@ public class StreamingReplicationManager {
                         datasetLifecycleManager.register(localResource.getPath(), index);
                         datasetLifecycleManager.open(localResource.getPath());
                     }
-                    LOGGER.log(Level.INFO, "REPL: Redoing " + logRecord.getLogRecordForDisplay());
+                    LOGGER.log(Level.INFO, "REPL: " + Thread.currentThread().getName() + " Redoing " + logRecord
+                            .getLogRecordForDisplay());
                     RecoveryManager.redo(datasetLifecycleManager, logRecord.getNewValue(), logRecord.getNewOp(),
                             logRecord.getDatasetId(), logRecord.getResourceId());
                 } catch (HyracksDataException e) {

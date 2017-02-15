@@ -148,7 +148,6 @@ public class StreamingReplicationThread extends AbstractReplicationThread {
                         // TODO: What happens on failure here?
                         replicationChannel.logManager.log(remoteLog);
                         LOGGER.info("After LSN: " + remoteLog.getLSN());
-
                         replicationChannel.streamingReplicationManager.submit(remoteLog);
                     }
                     break;
