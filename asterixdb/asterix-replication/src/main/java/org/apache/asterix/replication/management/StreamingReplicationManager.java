@@ -26,7 +26,11 @@ import org.apache.asterix.transaction.management.resource.PersistentLocalResourc
 import org.apache.asterix.transaction.management.service.recovery.RecoveryManager;
 import org.apache.commons.lang.NotImplementedException;
 import org.apache.hyracks.api.exceptions.HyracksDataException;
+import org.apache.hyracks.storage.am.common.api.IndexException;
+import org.apache.hyracks.storage.am.common.impls.NoOpOperationCallback;
+import org.apache.hyracks.storage.am.common.ophelpers.IndexOperation;
 import org.apache.hyracks.storage.am.lsm.common.api.ILSMIndex;
+import org.apache.hyracks.storage.am.lsm.common.api.ILSMIndexAccessor;
 import org.apache.hyracks.storage.common.file.ILocalResourceRepository;
 import org.apache.hyracks.storage.common.file.LocalResource;
 
@@ -133,14 +137,6 @@ public class StreamingReplicationManager {
         }
     }
 
-    private synchronized ByteBuffer flipBuffers(ByteBuffer inactiveBuffer, int resourcePartition) {
-        ByteBuffer activeBuffer;
-        ByteBuffer temp;
-        //synchronized ()
-
-        throw new NotImplementedException();
-    }
-
     private ByteBuffer getWriteBufferForPartition(int resourcePartition) {
         return partitionWriteBuffer.get(resourcePartition);
     }
@@ -160,10 +156,6 @@ public class StreamingReplicationManager {
             // TODO: Construct LogRecord here from buffer.
         }
         return logRecord;
-    }
-
-    private boolean flushReplicationQ(int partition) {
-        return false;
     }
 
     private boolean flushWriteBufferToQ(int partition) throws InterruptedException {
@@ -186,30 +178,12 @@ public class StreamingReplicationManager {
         return true;
     }
 
-    private boolean requestForWork(int partition) {
-        synchronized (partitionWriteBuffer.get(partition)) {
-            while (getWriteBufferForPartition(partition).position() == 0) {
-                try {
-                    wait();
-                    if (getWriteBufferForPartition(partition).position() != 0) {
-
-                    }
-                } catch (InterruptedException e) {
-                    e.printStackTrace();
-                }
-            }
-        }
-        return false;
-    }
-
     private class ReplicationMaterialzationThread implements Runnable {
 
         private final int partition;
         private final BlockingQueue<ByteBuffer> jobQ;
         private ByteBuffer buffer;
         ILogRecord logRecord;
-        private Object completedMonitor;
-        private boolean readyToMaterialize;
 
         public ReplicationMaterialzationThread(int partition, BlockingQueue<ByteBuffer> jobQ, ByteBuffer buffer) {
             this.partition = partition;
@@ -283,13 +257,32 @@ public class StreamingReplicationManager {
                     }
                     LOGGER.log(Level.INFO, "REPL: " + Thread.currentThread().getName() + " Redoing " + logRecord
                             .getLogRecordForDisplay());
-                    RecoveryManager.redo(datasetLifecycleManager, logRecord.getNewValue(), logRecord.getNewOp(),
-                            logRecord.getDatasetId(), logRecord.getResourceId());
+
+                    ILSMIndexAccessor indexAccessor = index.createAccessor(NoOpOperationCallback.INSTANCE,
+                            NoOpOperationCallback.INSTANCE);
+
+                    if (logRecord.getNewOp() == IndexOperation.INSERT.ordinal()) {
+                        indexAccessor.forceInsert(logRecord.getNewValue());
+                    } else if (logRecord.getNewOp() == IndexOperation.DELETE.ordinal()) {
+                        indexAccessor.forceDelete(logRecord.getNewValue());
+                    } else {
+                        LOGGER.log(Level.SEVERE, "Unknown Optype to replicate!");
+                    }
+
+//                    RecoveryManager.redo(datasetLifecycleManager, logRecord.getNewValue(), logRecord.getNewOp(),
+//                            logRecord.getDatasetId(), logRecord.getResourceId());
                 } catch (HyracksDataException e) {
                     LOGGER.log(Level.SEVERE, "REPL: Replicationg a record failed!!!");
                     e.printStackTrace();
+                } catch (IndexException e) {
+                    // TODO: change this to a catch all exception?
+                    e.printStackTrace();
                 }
             }
+        }
+
+        private void handleJobAbort() {
+            // TODO: Wait for the buffer Qs to get full and then run the analysis-undo phase.
         }
     }
 }
