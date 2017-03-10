@@ -74,10 +74,13 @@ public class ReplicationJob implements Runnable {
         try {
             sleepDuration /= sleepDampFactor;
             LOGGER.info("Sleeping for "  + sleepDuration + " PK : " + PKHashValue);
+
             Thread.sleep(sleepDuration);
             LOGGER.info("Replicating PKHash: " + PKHashValue);
+
             RecoveryManager.redo(datasetLifecycleManager, newValue, newOp, datasetId, resourceId);
             LOGGER.info("Replicated: " + PKHashValue);
+
             ((DatasetLifecycleManager) datasetLifecycleManager).dumpState(System.out);
             //datasetLifecycleManager.close(resourceAbsolutePath);
         } catch (Exception e) {

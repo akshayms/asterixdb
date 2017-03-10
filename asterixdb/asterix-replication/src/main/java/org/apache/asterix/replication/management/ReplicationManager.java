@@ -138,6 +138,7 @@ public class ReplicationManager implements IReplicationManager {
     private final ByteBuffer txnLogsBatchSizeBuffer = ByteBuffer.allocate(Integer.BYTES);
     private final IReplicationStrategy replicationStrategy;
     private final PersistentLocalResourceRepository localResourceRepo;
+    private final boolean isStreaming = true;
 
     //TODO this class needs to be refactored by moving its private classes to separate files
     //and possibly using MessageBroker to send/receive remote replicas events.
@@ -278,7 +279,10 @@ public class ReplicationManager implements IReplicationManager {
     private void processJob(IReplicationJob job, Map<String, SocketChannel> replicasSockets, ByteBuffer requestBuffer)
             throws IOException {
         try {
-
+            LOGGER.log(Level.INFO, "Replication JobType: " + job.getJobType().ordinal());
+            if (job.getExecutionType() == ReplicationExecutionType.SYNC) {
+                LOGGER.log(Level.INFO, "Replication SYNC JOB!! " + job);
+            }
             //all of the job's files belong to a single storage partition.
             //get any of them to determine the partition from the file path.
             String jobFile = job.getJobFiles().iterator().next();
@@ -296,6 +300,7 @@ public class ReplicationManager implements IReplicationManager {
             }
 
             boolean isLSMComponentFile = job.getJobType() == ReplicationJobType.LSM_COMPONENT;
+
             try {
                 //if there isn't already a connection, establish a new one
                 if (replicasSockets == null) {
@@ -1284,7 +1289,9 @@ public class ReplicationManager implements IReplicationManager {
                     if (replicaSockets == null) {
                         replicaSockets = getActiveRemoteReplicasSockets();
                     }
-                    processJob(job, replicaSockets, reusableBuffer);
+//                    if (!isStreaming || job.getJobType() == ReplicationJobType.METADATA) {
+                        processJob(job, replicaSockets, reusableBuffer);
+//                    }
 
                     //if no more jobs to process, close sockets
                     if (replicationJobsQ.isEmpty()) {

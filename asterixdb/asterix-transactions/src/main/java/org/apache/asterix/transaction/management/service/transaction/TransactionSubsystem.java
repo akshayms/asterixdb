@@ -76,7 +76,9 @@ public class TransactionSubsystem implements ITransactionSubsystem {
         final boolean replicationEnabled = repProperties.isParticipant(id);
 
         final CheckpointProperties checkpointProperties = new CheckpointProperties(txnProperties, id);
-        checkpointManager = CheckpointManagerFactory.create(this, checkpointProperties, replicationEnabled);
+        boolean streamingReplicationEnabled = true;
+        checkpointManager = CheckpointManagerFactory.create(this, checkpointProperties, replicationEnabled,
+                streamingReplicationEnabled);
         final Checkpoint latestCheckpoint = checkpointManager.getLatest();
         if (latestCheckpoint != null && latestCheckpoint.getStorageVersion() != StorageConstants.VERSION) {
             throw new IllegalStateException(

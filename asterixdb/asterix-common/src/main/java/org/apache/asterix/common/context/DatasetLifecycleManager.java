@@ -412,12 +412,25 @@ public class DatasetLifecycleManager implements IDatasetLifecycleManager, ILifeC
                 accessor.scheduleFlush(iInfo.getIndex().getIOOperationCallback());
             }
         } else {
+            boolean streaming = true; // TODO: Get this when the dataset
             for (IndexInfo iInfo : dsInfo.getIndexes().values()) {
                 // TODO: This is not efficient since we flush the indexes sequentially.
                 // Think of a way to allow submitting the flush requests concurrently. We don't do them concurrently because this
                 // may lead to a deadlock scenario between the DatasetLifeCycleManager and the PrimaryIndexOperationTracker.
-                flushAndWaitForIO(dsInfo, iInfo);
+                if (streaming) {
+                    flushNoIOWait(dsInfo, iInfo);
+                } else {
+                    flushAndWaitForIO(dsInfo, iInfo);
+                }
             }
+        }
+    }
+
+    private void flushNoIOWait(DatasetInfo dsInfo, IndexInfo iInfo) throws HyracksDataException {
+        if (iInfo.isOpen()) {
+            ILSMIndexAccessor accessor = iInfo.getIndex().createAccessor(NoOpOperationCallback.INSTANCE,
+                    NoOpOperationCallback.INSTANCE);
+            accessor.scheduleFlush(iInfo.getIndex().getIOOperationCallback());
         }
     }
 

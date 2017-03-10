@@ -49,7 +49,7 @@ import org.apache.hyracks.api.exceptions.HyracksDataException;
 import org.apache.hyracks.storage.common.file.ILocalResourceRepository;
 import org.apache.hyracks.storage.common.file.LocalResource;
 
-public class ReplicaResourcesManager implements IReplicaResourcesManager {
+public class   ReplicaResourcesManager implements IReplicaResourcesManager {
     private static final Logger LOGGER = Logger.getLogger(ReplicaResourcesManager.class.getName());
     public final static String LSM_COMPONENT_MASK_SUFFIX = "_mask";
     private final static String REPLICA_INDEX_LSN_MAP_NAME = ".LSN_MAP";

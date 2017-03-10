@@ -43,8 +43,12 @@ public class ReplicationCheckpointManager extends AbstractCheckpointManager {
 
     private static final Logger LOGGER = Logger.getLogger(ReplicationCheckpointManager.class.getName());
 
-    public ReplicationCheckpointManager(ITransactionSubsystem txnSubsystem, CheckpointProperties checkpointProperties) {
+    private boolean streamingReplicationEnabled = false;
+
+    public ReplicationCheckpointManager(ITransactionSubsystem txnSubsystem, CheckpointProperties
+            checkpointProperties, boolean streamingReplicationEnabled) {
         super(txnSubsystem, checkpointProperties);
+        this.streamingReplicationEnabled = streamingReplicationEnabled;
     }
 
     /**

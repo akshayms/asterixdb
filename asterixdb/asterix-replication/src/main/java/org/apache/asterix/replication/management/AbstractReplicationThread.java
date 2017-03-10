@@ -53,6 +53,7 @@ import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
 import java.nio.channels.SocketChannel;
 import java.util.*;
+import java.util.logging.Level;
 import java.util.logging.Logger;
 
 /**
@@ -210,6 +211,8 @@ public abstract class AbstractReplicationThread implements IReplicationThread {
         File destFile = new File(replicaFilePath);
         destFile.createNewFile();
 
+        LOGGER.log(Level.INFO, "REPL: handleReplicateFile(): " + afp.toString());
+
         try (RandomAccessFile fileOutputStream = new RandomAccessFile(destFile, "rw");
              FileChannel fileChannel = fileOutputStream.getChannel()) {
             fileOutputStream.setLength(afp.getFileSize());
@@ -359,8 +362,10 @@ public abstract class AbstractReplicationThread implements IReplicationThread {
         }
 
         //schedule flush for datasets requested to be flushed
-        for (int datasetId : datasetsToForceFlush) {
-            datasetLifeCycleManager.flushDataset(datasetId, true);
+        if (true) {// isNotStreaming
+            for (int datasetId : datasetsToForceFlush) {
+                datasetLifeCycleManager.flushDataset(datasetId, true);
+            }
         }
 
         //the remaining indexes in the requested set are those which cannot be flushed.

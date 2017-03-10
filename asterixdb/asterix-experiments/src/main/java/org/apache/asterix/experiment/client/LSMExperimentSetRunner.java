@@ -287,7 +287,7 @@ public class LSMExperimentSetRunner {
                 suite.add(new Experiment5CBuilder(config));
                 suite.add(new Experiment5DBuilder(config));
         */
-                suite.add(new PerfTestAggBuilder(config));
+//                suite.add(new PerfTestAggBuilder(config));
                 suite.add(new PresetClusterPerfBuilder(config));
 
         Pattern p = config.getRegex() == null ? null : Pattern.compile(config.getRegex());

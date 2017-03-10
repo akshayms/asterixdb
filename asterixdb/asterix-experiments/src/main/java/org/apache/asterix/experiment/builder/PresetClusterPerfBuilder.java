@@ -73,7 +73,7 @@ public class PresetClusterPerfBuilder extends AbstractExperimentBuilder {
         this.restPort = config.getRESTPort();
         this.localExperimentRoot = Paths.get(config.getLocalExperimentRoot());
         this.countFileName = "bench_count.aql";
-        this.loadAQLFilePath = "bench_3_load_2.aql";
+        this.loadAQLFilePath = "bench_3_load.aql";
         this.querySQLPPFileName = "agg_bench";
     }
 
@@ -94,7 +94,6 @@ public class PresetClusterPerfBuilder extends AbstractExperimentBuilder {
         //run DDL + Load
         execs.add(new TimedAction(new RunAQLFileAction(httpClient, restHost, restPort, localExperimentRoot.resolve(
                 LSMExperimentConstants.AQL_DIR).resolve(loadAQLFilePath))));
-
         //execute SQL++ Queries
         execs.add(new TimedAction(new RunSQLPPFileAction(httpClient, restHost, restPort, localExperimentRoot.resolve(
                 LSMExperimentConstants.AQL_DIR).resolve(querySQLPPFileName),

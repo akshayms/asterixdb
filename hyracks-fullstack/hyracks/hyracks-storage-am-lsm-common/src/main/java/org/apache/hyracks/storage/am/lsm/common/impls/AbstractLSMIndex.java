@@ -270,6 +270,7 @@ public abstract class AbstractLSMIndex implements ILSMIndexInternal {
             componentFiles.addAll(getLSMComponentPhysicalFiles(lsmComponent));
         }
 
+
         ReplicationExecutionType executionType;
         if (bulkload) {
             executionType = ReplicationExecutionType.SYNC;
@@ -278,12 +279,14 @@ public abstract class AbstractLSMIndex implements ILSMIndexInternal {
         }
 
         //create replication job and submit it
-        LSMIndexReplicationJob job = new LSMIndexReplicationJob(this, ctx, componentFiles, operation, executionType,
-                opType);
-        try {
-            diskBufferCache.getIOReplicationManager().submitJob(job);
-        } catch (IOException e) {
-            throw new HyracksDataException(e);
+        if (bulkload) {
+            LSMIndexReplicationJob job = new LSMIndexReplicationJob(this, ctx, componentFiles, operation, executionType,
+                    opType);
+            try {
+                diskBufferCache.getIOReplicationManager().submitJob(job);
+            } catch (IOException e) {
+                throw new HyracksDataException(e);
+            }
         }
     }
 

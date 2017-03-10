@@ -129,7 +129,7 @@ public class PropertiesAccessor {
         for (TransactionLogDir txnLogDir : asterixConfiguration.getTransactionLogDir()) {
             transactionLogDirs.put(txnLogDir.getNcId(), txnLogDir.getTxnLogDirPath());
         }
-        loadAsterixBuildProperties();
+        //loadAsterixBuildProperties();
     }
 
     private AsterixConfiguration configure(String fileName) throws IOException, AsterixException {

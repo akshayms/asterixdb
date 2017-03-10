@@ -262,9 +262,9 @@ public class StreamingReplicationManager {
                             NoOpOperationCallback.INSTANCE);
 
                     if (logRecord.getNewOp() == IndexOperation.INSERT.ordinal()) {
-                        indexAccessor.forceInsert(logRecord.getNewValue());
+                        indexAccessor.insert(logRecord.getNewValue()); // TODO: Changed from forceInsert to insert.
                     } else if (logRecord.getNewOp() == IndexOperation.DELETE.ordinal()) {
-                        indexAccessor.forceDelete(logRecord.getNewValue());
+                        indexAccessor.delete(logRecord.getNewValue()); // TODO: Changed from forceDelete to delete.
                     } else {
                         LOGGER.log(Level.SEVERE, "Unknown Optype to replicate!");
                     }

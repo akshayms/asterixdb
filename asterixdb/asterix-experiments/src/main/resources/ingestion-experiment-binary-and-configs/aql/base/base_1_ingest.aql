@@ -11,7 +11,7 @@ create feed TweetFeed1 using socket_adapter
 
 create feed TweetFeed2 using socket_adapter
 (
-    ("sockets"="127.0.0.1:10002"),
+    ("sockets"="cc:10002"),
     ("address-type"="IP"),
     ("type-name"="TweetMessageType"),
     ("format"="adm"),

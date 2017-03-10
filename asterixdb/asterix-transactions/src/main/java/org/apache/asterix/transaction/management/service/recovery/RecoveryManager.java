@@ -79,7 +79,7 @@ import org.apache.hyracks.storage.common.file.LocalResource;
  */
 public class RecoveryManager implements IRecoveryManager, ILifeCycleComponent {
 
-    public static final boolean IS_DEBUG_MODE = false;
+    public static final boolean IS_DEBUG_MODE = true;
     private static final Logger LOGGER = Logger.getLogger(RecoveryManager.class.getName());
     private final TransactionSubsystem txnSubsystem;
     private final LogManager logMgr;
@@ -90,6 +90,7 @@ public class RecoveryManager implements IRecoveryManager, ILifeCycleComponent {
     private final PersistentLocalResourceRepository localResourceRepository;
     private final ICheckpointManager checkpointManager;
     private SystemState state;
+    private boolean isStreaming = true;
 
     public RecoveryManager(TransactionSubsystem txnSubsystem) {
         this.txnSubsystem = txnSubsystem;
@@ -449,6 +450,10 @@ public class RecoveryManager implements IRecoveryManager, ILifeCycleComponent {
 
                 if (!((AbstractLSMIndex) index).isCurrentMutableComponentEmpty() || ioCallback.hasPendingFlush()) {
                     firstLSN = ioCallback.getFirstLSN();
+                    if (IS_DEBUG_MODE) {
+                        LOGGER.info("LocalMinFirstLSNSearch: Index " + index.toString() + " has firstLSN: " +
+                                firstLSN + " current minimum: " + minFirstLSN);
+                    }
                     minFirstLSN = Math.min(minFirstLSN, firstLSN);
                 }
             }
@@ -595,8 +600,11 @@ public class RecoveryManager implements IRecoveryManager, ILifeCycleComponent {
                         break;
                     case LogType.ENTITY_COMMIT:
                     case LogType.UPSERT_ENTITY_COMMIT:
-                        if (activePartitions.contains(logRecord.getResourcePartition())) {
-                            jobLoserEntity2LSNsMap.remove(tempKeyTxnId);
+                        if (activePartitions.contains(logRecord.getResourcePartition()) || isStreaming) {
+                            Object v = jobLoserEntity2LSNsMap.remove(tempKeyTxnId);
+                            if (v == null) {
+                                LOGGER.info("NOT REMOVED! " + tempKeyTxnId.pkHashValue);
+                            }
                             entityCommitLogCount++;
                             if (IS_DEBUG_MODE) {
                                 LOGGER.info(Thread.currentThread().getId() + "======> entity_commit[" + currentLSN + "]"
@@ -642,8 +650,8 @@ public class RecoveryManager implements IRecoveryManager, ILifeCycleComponent {
                     if (logRecord == null) {
                         throw new ACIDException("IllegalState exception during abort( " + txnContext.getJobId() + ")");
                     }
-                    if (IS_DEBUG_MODE) {
-                        LOGGER.info(logRecord.getLogRecordForDisplay());
+                    if  (IS_DEBUG_MODE) {
+                        LOGGER.info(" Undoing: " + logRecord.getLogRecordForDisplay());
                     }
                     undo(logRecord, datasetLifecycleManager);
                     undoCount++;

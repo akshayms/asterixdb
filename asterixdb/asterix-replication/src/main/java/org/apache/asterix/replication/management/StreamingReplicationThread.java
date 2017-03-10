@@ -53,6 +53,7 @@ public class StreamingReplicationThread extends AbstractReplicationThread {
             ReplicationProtocol.ReplicationRequestType replicationFunction = ReplicationProtocol.getRequestType(socketChannel,
                     inBuffer);
             while (replicationFunction != ReplicationProtocol.ReplicationRequestType.GOODBYE) {
+                LOGGER.info("Replication Function: " + replicationFunction.toString());
                 switch (replicationFunction) {
                     case REPLICATE_LOG:
                         handleLogReplication();
