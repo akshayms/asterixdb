@@ -18,8 +18,10 @@
  */
 package org.apache.asterix.common.replication;
 
+import java.io.IOException;
 import java.nio.channels.SocketChannel;
 
+import org.apache.asterix.common.exceptions.ACIDException;
 import org.apache.asterix.common.transactions.LogRecord;
 
 public interface IReplicationThread extends Runnable {
@@ -36,4 +38,11 @@ public interface IReplicationThread extends Runnable {
      * @return The replication client socket channel.
      */
     public SocketChannel getReplicationClientSocket();
+
+    /**
+     * Handle log records arriving in the replication channel.
+     * @throws IOException
+     * @throws ACIDException
+     */
+    public void handleLogReplication() throws IOException, ACIDException;
 }

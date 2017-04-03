@@ -35,6 +35,19 @@
     <txnLogDirPath>target/txnLogDir/asterix_nc2</txnLogDirPath>
   </transactionLogDir>
 
+  <high_availability>
+    <enabled>true</enabled>
+    <data_replication>
+      <strategy>chained_declustering</strategy>
+      <replication_port>2016</replication_port>
+      <replication_time_out>30</replication_time_out>
+      <replication_factor>2</replication_factor>
+    </data_replication>
+    <fault_tolerance>
+      <strategy>auto</strategy>
+    </fault_tolerance>
+  </high_availability>
+
   <property>
     <name>max.wait.active.cluster</name>
     <value>60</value>

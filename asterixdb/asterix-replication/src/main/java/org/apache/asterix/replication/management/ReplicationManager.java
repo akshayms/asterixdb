@@ -93,9 +93,10 @@ import org.apache.hyracks.util.StorageUtil.StorageUnit;
 /**
  * This class is used to process replication jobs and maintain remote replicas states
  */
-public class ReplicationManager implements IReplicationManager {
+public class ReplicationManager extends AbstractReplicationManager {
 
     private static final Logger LOGGER = Logger.getLogger(ReplicationManager.class.getName());
+    private static final boolean DEBUG_MODE = true;
     private static final int INITIAL_REPLICATION_FACTOR = 1;
     private static final int MAX_JOB_COMMIT_ACK_WAIT = 10000;
     private final String nodeId;
@@ -201,20 +202,29 @@ public class ReplicationManager implements IReplicationManager {
 
     @Override
     public void submitJob(IReplicationJob job) throws IOException {
-        if (job.getExecutionType() == ReplicationExecutionType.ASYNC) {
-            replicationJobsQ.offer(job);
-        } else {
-            //wait until replication is resumed
-            while (replicationSuspended.get()) {
-                synchronized (replicationSuspended) {
-                    try {
-                        replicationSuspended.wait();
-                    } catch (InterruptedException e) {
-                        Thread.currentThread().interrupt();
+        //if (job.getJobType() == ReplicationJobType.METADATA) {
+        if (true) {
+            if (DEBUG_MODE) {
+                LOGGER.info("New replication Job: " + job);
+            }
+            if (job.getExecutionType() == ReplicationExecutionType.ASYNC) {
+                replicationJobsQ.offer(job);
+            } else {
+                //wait until replication is resumed
+                while (replicationSuspended.get()) {
+                    synchronized (replicationSuspended) {
+                        try {
+                            replicationSuspended.wait();
+                        } catch (InterruptedException e) {
+                            Thread.currentThread().interrupt();
+                        }
                     }
                 }
+                processJob(job, null, null);
             }
-            processJob(job, null, null);
+        }
+        else if (DEBUG_MODE) {
+            LOGGER.info("Replication Job Ignored: " + job);
         }
     }
 

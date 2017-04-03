@@ -18,6 +18,9 @@
  */
 package org.apache.asterix.common.replication;
 
+import org.apache.asterix.common.transactions.IAppRuntimeContextProvider;
+import org.apache.asterix.common.transactions.ILogManager;
+
 import java.io.IOException;
 
 public interface IReplicationChannel {
@@ -33,5 +36,12 @@ public interface IReplicationChannel {
      * @throws IOException
      */
     public void close() throws IOException;
+
+    public ILogManager getLogManager();
+
+    public IAppRuntimeContextProvider getAppRuntimeContextProvider();
+
+    public IReplicaResourcesManager getReplicaResourcesManager();
+
 
 }

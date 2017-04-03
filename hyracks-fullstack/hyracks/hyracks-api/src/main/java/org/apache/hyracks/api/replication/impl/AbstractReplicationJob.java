@@ -55,4 +55,15 @@ public abstract class AbstractReplicationJob implements IReplicationJob {
     public ReplicationJobType getJobType() {
         return jobType;
     }
+
+    @Override
+    public String toString() {
+        StringBuilder builder = new StringBuilder();
+        builder.append("Job Type: ").append(jobType.name());
+        builder.append("Operation Type: ").append(operation.name());
+        builder.append("Execution Type: ").append(executionType.name());
+        builder.append("Job Type: ").append(jobType.name());
+        builder.append("Files: ").append(filesToReplicate);
+        return builder.toString();
+    }
 }
