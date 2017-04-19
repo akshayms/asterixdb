@@ -128,5 +128,7 @@ public interface IReplicationManager extends IIOReplicationManager {
      */
     public void replicateTxnLogBatch(ByteBuffer buffer);
 
-    public long getLogPageSize();
+    public int getLogPageSize();
+
+    void updateReplicaState(String replicaId, Replica.ReplicaState newState, boolean suspendedReplication) throws InterruptedException;
 }

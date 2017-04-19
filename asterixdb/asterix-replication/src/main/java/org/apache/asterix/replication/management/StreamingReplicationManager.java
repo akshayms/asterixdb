@@ -1008,7 +1008,7 @@ public class StreamingReplicationManager extends AbstractReplicationManager {
 
     @Override
     public void startReplicationThreads() throws InterruptedException {
-        replicationJobsProcessor = new ReplicationManager.ReplicationJobsProccessor();
+        replicationJobsProcessor = new StreamingReplicationManager.ReplicationJobsProccessor();
 
         //start/continue processing jobs/logs
         if (logsRepSockets == null) {

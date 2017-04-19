@@ -26,6 +26,7 @@ import java.nio.channels.UnresolvedAddressException;
 import java.util.concurrent.Callable;
 
 import org.apache.asterix.common.config.ReplicationProperties;
+import org.apache.asterix.common.replication.IReplicationManager;
 import org.apache.asterix.common.replication.Replica;
 import org.apache.asterix.common.replication.Replica.ReplicaState;
 import org.apache.asterix.replication.functions.ReplicationProtocol;
@@ -35,11 +36,11 @@ public class ReplicaStateChecker implements Callable<Void> {
     private final int WAIT_TIME = 2000;
     private final Replica replica;
     private final int replicationTimeOut;
-    private final ReplicationManager replicationManager;
+    private final IReplicationManager replicationManager;
     private final ReplicationProperties asterixReplicationProperties;
     private final boolean suspendReplication;
 
-    public ReplicaStateChecker(Replica replica, int replicationTimeOut, ReplicationManager replicationManager,
+    public ReplicaStateChecker(Replica replica, int replicationTimeOut, IReplicationManager replicationManager,
             ReplicationProperties asterixReplicationProperties, boolean suspendReplication) {
         this.replica = replica;
         this.replicationTimeOut = replicationTimeOut;

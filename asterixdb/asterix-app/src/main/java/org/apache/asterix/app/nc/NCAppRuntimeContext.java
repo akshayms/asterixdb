@@ -71,6 +71,7 @@ import org.apache.asterix.metadata.bootstrap.MetadataBootstrap;
 import org.apache.asterix.replication.management.ReplicationChannel;
 import org.apache.asterix.replication.management.ReplicationManager;
 import org.apache.asterix.replication.management.StreamingReplicationChannel;
+import org.apache.asterix.replication.management.StreamingReplicationManager;
 import org.apache.asterix.replication.recovery.RemoteRecoveryManager;
 import org.apache.asterix.replication.storage.ReplicaResourcesManager;
 import org.apache.asterix.runtime.transaction.GlobalResourceIdFactoryProvider;
@@ -126,6 +127,7 @@ public class NCAppRuntimeContext implements IAppRuntimeContext {
     private PersistentLocalResourceRepository localResourceRepository;
     private IIOManager ioManager;
     private boolean isShuttingdown;
+    private boolean isStreamingReplication;
 
     private ActiveManager activeManager;
 
@@ -162,6 +164,7 @@ public class NCAppRuntimeContext implements IAppRuntimeContext {
         ncExtensionManager = new NCExtensionManager(allExtensions);
         componentProvider = new StorageComponentProvider();
         resourceIdFactory = new GlobalResourceIdFactoryProvider(ncServiceContext).createResourceIdFactory();
+        this.isStreamingReplication = true;
     }
 
     @Override
@@ -214,8 +217,14 @@ public class NCAppRuntimeContext implements IAppRuntimeContext {
 
             replicaResourcesManager = new ReplicaResourcesManager(localResourceRepository, metadataProperties);
 
-            replicationManager = new ReplicationManager(nodeId, replicationProperties, replicaResourcesManager,
-                    txnSubsystem.getLogManager(), asterixAppRuntimeContextProvider);
+
+            if (!isStreamingReplication) {
+                replicationManager = new ReplicationManager(nodeId, replicationProperties, replicaResourcesManager,
+                        txnSubsystem.getLogManager(), asterixAppRuntimeContextProvider);
+            } else {
+                replicationManager = new StreamingReplicationManager(nodeId, replicationProperties,
+                        replicaResourcesManager, txnSubsystem.getLogManager(), asterixAppRuntimeContextProvider);
+            }
 
             //pass replication manager to replication required object
             //LogManager to replicate logs
@@ -237,13 +246,14 @@ public class NCAppRuntimeContext implements IAppRuntimeContext {
                 }
             }
 
-            //initialize replication channel
-            replicationChannel = new ReplicationChannel(nodeId, replicationProperties, txnSubsystem.getLogManager(),
-                    replicaResourcesManager, replicationManager, ncServiceContext,
-                    asterixAppRuntimeContextProvider);
-//            replicationChannel = new StreamingReplicationChannel(nodeId, replicationProperties, txnSubsystem.getLogManager(),
-//                    replicaResourcesManager, replicationManager, ncServiceContext, asterixAppRuntimeContextProvider);
-
+            if (!isStreamingReplication) {
+                replicationChannel = new ReplicationChannel(nodeId, replicationProperties, txnSubsystem.getLogManager(),
+                        replicaResourcesManager, replicationManager, ncServiceContext, asterixAppRuntimeContextProvider);
+            } else {
+                // Change to streaming replication
+                replicationChannel = new ReplicationChannel(nodeId, replicationProperties, txnSubsystem.getLogManager(),
+                        replicaResourcesManager, replicationManager, ncServiceContext, asterixAppRuntimeContextProvider);
+            }
 
             remoteRecoveryManager = new RemoteRecoveryManager(replicationManager, this, replicationProperties);
 
