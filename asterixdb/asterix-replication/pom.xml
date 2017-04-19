@@ -76,6 +76,11 @@
       <artifactId>asterix-transactions</artifactId>
       <version>${project.version}</version>
     </dependency>
+    <dependency>
+      <groupId>org.apache.hyracks</groupId>
+      <artifactId>hyracks-storage-am-common</artifactId>
+      <version>0.3.1-SNAPSHOT</version>
+    </dependency>
   </dependencies>
 
 </project>

@@ -1,6 +1,7 @@
 package org.apache.asterix.replication.management;
 
 import org.apache.asterix.common.api.IDatasetLifecycleManager;
+import org.apache.asterix.common.cluster.ClusterPartition;
 import org.apache.asterix.common.config.ReplicationProperties;
 import org.apache.asterix.common.replication.IReplicaResourcesManager;
 import org.apache.asterix.common.replication.IReplicationChannel;
@@ -16,6 +17,7 @@ import org.apache.hyracks.api.application.INCServiceContext;
 import java.io.IOException;
 import java.nio.channels.ServerSocketChannel;
 import java.nio.channels.SocketChannel;
+import java.util.*;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.LinkedBlockingQueue;
@@ -37,6 +39,7 @@ public abstract class AbstractReplicationChannel extends Thread implements IRepl
     protected final LinkedBlockingQueue<LogRecord> pendingNotificationRemoteLogsQ;
     protected final ExecutorService replicationThreads;
     protected final ReplicaResourcesManager replicaResourcesManager;
+    protected final Set<Integer> nodeHostedPartitions;
 
     private final ILogManager logManager;
 
@@ -54,6 +57,17 @@ public abstract class AbstractReplicationChannel extends Thread implements IRepl
                 .getLocalResourceRepository();
         this.pendingNotificationRemoteLogsQ = new LinkedBlockingQueue<>();
         this.replicationThreads = Executors.newCachedThreadPool(ncServiceContext.getThreadFactory());
+        Set<String> nodeReplicationClients = replicationProperties.getRemotePrimaryReplicasIds(nodeId);
+        Map<String, ClusterPartition[]> nodePartitions =
+                asterixAppRuntimeContextProvider.getAppContext().getMetadataProperties().getNodePartitions();
+        List<Integer> clientsPartitions = new ArrayList<>();
+        for (String clientId : nodeReplicationClients) {
+            for (ClusterPartition clusterPartition : nodePartitions.get(clientId)) {
+                clientsPartitions.add(clusterPartition.getPartitionId());
+            }
+        }
+        nodeHostedPartitions = new HashSet<>(clientsPartitions.size());
+        nodeHostedPartitions.addAll(clientsPartitions);
 
     }
 

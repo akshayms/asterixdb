@@ -43,6 +43,16 @@ public class MetadataOnlyReplicationStrategy implements IReplicationStrategy {
     }
 
     @Override
+    public boolean replicateLog() {
+        return false;
+    }
+
+    @Override
+    public boolean replicateLog(int datasetId) {
+        return isMatch(datasetId) && true;
+    }
+
+    @Override
     public Set<Replica> getRemoteReplicas(String nodeId) {
         if (nodeId.equals(metadataNodeId)) {
             return metadataNodeReplicas;

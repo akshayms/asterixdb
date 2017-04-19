@@ -92,6 +92,7 @@ public class RecoveryManager implements IRecoveryManager, ILifeCycleComponent {
     private final ICheckpointManager checkpointManager;
     private SystemState state;
     private final INCServiceContext serviceCtx;
+    private final boolean streamingReplication = true;
 
     public RecoveryManager(ITransactionSubsystem txnSubsystem, INCServiceContext serviceCtx) {
         this.serviceCtx = serviceCtx;
@@ -300,6 +301,9 @@ public class RecoveryManager implements IRecoveryManager, ILifeCycleComponent {
 
     private synchronized void startRecoveryRedoPhase(Set<Integer> partitions, ILogReader logReader,
             long lowWaterMarkLSN, Set<Integer> winnerJobSet) throws IOException, ACIDException {
+        if (streamingReplication) {
+            return;
+        }
         int redoCount = 0;
         int jobId = -1;
 

@@ -21,6 +21,7 @@ package org.apache.asterix.replication.logging;
 import java.nio.ByteBuffer;
 import java.util.concurrent.atomic.AtomicBoolean;
 
+import org.apache.asterix.common.replication.IReplicationManager;
 import org.apache.asterix.common.transactions.ILogRecord;
 import org.apache.asterix.replication.management.ReplicationManager;
 
@@ -32,10 +33,10 @@ public class ReplicationLogBuffer {
     private final ByteBuffer appendBuffer;
     private final ByteBuffer replicationBuffer;
     private boolean stop;
-    private ReplicationManager replicationManager;
+    private IReplicationManager replicationManager;
     private final int batchSize;
 
-    public ReplicationLogBuffer(ReplicationManager replicationManager, int logBufferSize, int batchSize) {
+    public ReplicationLogBuffer(IReplicationManager replicationManager, int logBufferSize, int batchSize) {
         this.replicationManager = replicationManager;
         this.logBufferSize = logBufferSize;
         this.batchSize = batchSize;
@@ -159,7 +160,7 @@ public class ReplicationLogBuffer {
         return logBufferSize;
     }
 
-    public ReplicationManager getReplicationManager() {
+    public IReplicationManager getReplicationManager() {
         return replicationManager;
     }
 }

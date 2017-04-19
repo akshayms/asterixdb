@@ -24,6 +24,7 @@ import java.io.DataOutputStream;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.channels.SocketChannel;
+import java.util.logging.Logger;
 
 import org.apache.asterix.common.replication.ReplicaEvent;
 import org.apache.asterix.replication.management.NetworkingUtil;
@@ -64,7 +65,8 @@ public class ReplicationProtocol {
         REPLICA_EVENT,
         LSM_COMPONENT_PROPERTIES,
         ACK,
-        FLUSH_INDEX
+        FLUSH_INDEX,
+        CREATE_INDEX
     }
 
     public static ByteBuffer readRequest(SocketChannel socketChannel, ByteBuffer dataBuffer) throws IOException {
@@ -105,8 +107,8 @@ public class ReplicationProtocol {
             throws IOException {
         //read replication request type
         NetworkingUtil.readBytes(socketChannel, byteBuffer, REPLICATION_REQUEST_TYPE_SIZE);
-
-        ReplicationRequestType requestType = ReplicationProtocol.ReplicationRequestType.values()[byteBuffer.getInt()];
+        int index = byteBuffer.getInt();
+        ReplicationRequestType requestType = ReplicationProtocol.ReplicationRequestType.values()[index];
         return requestType;
     }
 

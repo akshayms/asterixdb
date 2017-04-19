@@ -27,6 +27,7 @@ import java.util.logging.Logger;
 import org.apache.asterix.common.config.ClusterProperties;
 import org.apache.asterix.common.exceptions.ErrorCode;
 import org.apache.asterix.common.exceptions.RuntimeDataException;
+import org.apache.asterix.common.metadata.MetadataIndexImmutableProperties;
 import org.apache.asterix.event.schema.cluster.Cluster;
 import org.apache.hyracks.api.exceptions.HyracksDataException;
 
@@ -34,10 +35,24 @@ public class ChainedDeclusteringReplicationStrategy implements IReplicationStrat
 
     private static final Logger LOGGER = Logger.getLogger(ChainedDeclusteringReplicationStrategy.class.getName());
     private int replicationFactor;
+    private boolean isStreamingReplication = true;
 
     @Override
     public boolean isMatch(int datasetId) {
+        if (datasetId < MetadataIndexImmutableProperties.FIRST_AVAILABLE_USER_DATASET_ID && datasetId >= 0) {
+            return true;
+        }
+        return true && !isStreamingReplication;
+    }
+
+    @Override
+    public boolean replicateLog() {
         return true;
+    }
+
+    @Override
+    public boolean replicateLog(int datasetId) {
+        return  isStreamingReplication || (isMatch(datasetId));
     }
 
     @Override

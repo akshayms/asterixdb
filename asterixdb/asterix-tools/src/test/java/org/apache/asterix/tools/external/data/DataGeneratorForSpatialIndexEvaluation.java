@@ -114,16 +114,16 @@ public class DataGeneratorForSpatialIndexEvaluation {
     public static class InitializationInfo {
         public Date startDate = new Date(1, 1, 2005);
         public Date endDate = new Date(8, 20, 2012);
-//        public String[] lastNames = DataGenerator.lastNames;
-//        public String[] firstNames = DataGenerator.firstNames;
-//        public String[] vendors = DataGenerator.vendors;
-//        public String[] jargon = DataGenerator.jargon;
-//        public String[] org_list = DataGenerator.org_list;
-        public String[] lastNames = DataGeneratorForSpatialIndexEvaluation.lastNames;
-        public String[] firstNames = DataGeneratorForSpatialIndexEvaluation.firstNames;
-        public String[] vendors = DataGeneratorForSpatialIndexEvaluation.vendors;
-        public String[] jargon = DataGeneratorForSpatialIndexEvaluation.jargon;
-        public String[] org_list = DataGeneratorForSpatialIndexEvaluation.org_list;
+        public String[] lastNames = DataGenerator.lastNames;
+        public String[] firstNames = DataGenerator.firstNames;
+        public String[] vendors = DataGenerator.vendors;
+        public String[] jargon = DataGenerator.jargon;
+        public String[] org_list = DataGenerator.org_list;
+//        public String[] lastNames = DataGeneratorForSpatialIndexEvaluation.lastNames;
+//        public String[] firstNames = DataGeneratorForSpatialIndexEvaluation.firstNames;
+//        public String[] vendors = DataGeneratorForSpatialIndexEvaluation.vendors;
+//        public String[] jargon = DataGeneratorForSpatialIndexEvaluation.jargon;
+//        public String[] org_list = DataGeneratorForSpatialIndexEvaluation.org_list;
     }
 
     public void initialize(InitializationInfo info, String openStreetMapFilePath, int locationSampleInterval) {

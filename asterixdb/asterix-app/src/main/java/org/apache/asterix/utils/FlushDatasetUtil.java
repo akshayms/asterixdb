@@ -72,5 +72,4 @@ public class FlushDatasetUtil {
         spec.setJobletEventListenerFactory(jobEventListenerFactory);
         JobUtils.runJob(hcc, spec, true);
     }
-
 }

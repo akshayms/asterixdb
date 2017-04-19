@@ -379,8 +379,11 @@ public class PersistentLocalResourceRepository implements ILocalResourceReposito
         if (!partitionDir.equals(StoragePathUtil.TEMP_DATASETS_STORAGE_FOLDER)) {
             filesToBeReplicated.clear();
             filesToBeReplicated.add(fileRef.getAbsolutePath());
-            ReplicationJob job = new ReplicationJob(ReplicationJobType.METADATA, operation,
+//            ReplicationJob job = new ReplicationJob(ReplicationJobType.METADATA, operation,
+//                    ReplicationExecutionType.SYNC, filesToBeReplicated);
+            ReplicationJob job = new ReplicationJob(ReplicationJobType.INDEX_CREATE, operation,
                     ReplicationExecutionType.SYNC, filesToBeReplicated);
+            LOGGER.info("Creating new replication job: " + job);
             try {
                 replicationManager.submitJob(job);
             } catch (IOException e) {

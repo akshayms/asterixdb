@@ -57,6 +57,7 @@ public class TransactionSubsystem implements ITransactionSubsystem {
     private final IAppRuntimeContextProvider asterixAppRuntimeContextProvider;
     private final TransactionProperties txnProperties;
     private final ICheckpointManager checkpointManager;
+    private final INCServiceContext serviceCtx;
 
     //for profiling purpose
     private long profilerEntityCommitLogCount = 0;
@@ -69,6 +70,7 @@ public class TransactionSubsystem implements ITransactionSubsystem {
         this.id = id;
         this.txnProperties = txnProperties;
         this.transactionManager = new TransactionManager(this);
+        this.serviceCtx = serviceCtx;
         this.lockManager = new ConcurrentLockManager(txnProperties.getLockManagerShrinkTimer());
         ReplicationProperties repProperties = ((IPropertiesProvider) asterixAppRuntimeContextProvider
                 .getAppContext()).getReplicationProperties();
@@ -141,6 +143,9 @@ public class TransactionSubsystem implements ITransactionSubsystem {
     public ICheckpointManager getCheckpointManager() {
         return checkpointManager;
     }
+
+    @Override
+    public INCServiceContext getServiceContext() { return serviceCtx; }
 
     /**
      * Thread for profiling entity level commit count

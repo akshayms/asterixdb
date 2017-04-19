@@ -203,7 +203,7 @@ public class LogRecord implements ILogRecord {
             }
         } else {
             // since PKValue is already serialized in remote logs, just put it into buffer
-            buffer.put(PKValue.getFieldData(0), 0, PKValueSize);
+            buffer.put(PKValue.getFieldData(0), PKValue.getFieldStart(0), PKValueSize);
         }
     }
 

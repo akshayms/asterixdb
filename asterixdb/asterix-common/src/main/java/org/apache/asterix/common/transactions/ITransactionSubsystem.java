@@ -19,6 +19,7 @@
 package org.apache.asterix.common.transactions;
 
 import org.apache.asterix.common.config.TransactionProperties;
+import org.apache.hyracks.api.application.INCServiceContext;
 
 /**
  * A transaction subsystem is responsible of maintaining Atomicity, Consistency, Isolation, and Durability
@@ -43,4 +44,6 @@ public interface ITransactionSubsystem {
     TransactionProperties getTransactionProperties();
 
     void incrementEntityCommitCount();
+
+    INCServiceContext getServiceContext();
 }

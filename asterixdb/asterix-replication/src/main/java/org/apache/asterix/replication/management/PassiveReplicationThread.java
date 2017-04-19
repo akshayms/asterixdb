@@ -6,7 +6,10 @@ import org.apache.asterix.common.config.IPropertiesProvider;
 import org.apache.asterix.common.context.IndexInfo;
 import org.apache.asterix.common.exceptions.ACIDException;
 import org.apache.asterix.common.ioopcallbacks.AbstractLSMIOOperationCallback;
-import org.apache.asterix.common.replication.*;
+import org.apache.asterix.common.replication.IReplicationChannel;
+import org.apache.asterix.common.replication.IReplicationStrategy;
+import org.apache.asterix.common.replication.IReplicationThread;
+import org.apache.asterix.common.replication.ReplicaEvent;
 import org.apache.asterix.common.storage.IndexFileProperties;
 import org.apache.asterix.common.transactions.LogRecord;
 import org.apache.asterix.common.transactions.LogSource;
@@ -91,6 +94,9 @@ public class PassiveReplicationThread implements IReplicationThread {
                     case FLUSH_INDEX:
                         handleFlushIndex();
                         break;
+                    case CREATE_INDEX:
+                        handleIndexCreate();
+                        break;
                     default:
                         throw new IllegalStateException("Unknown replication request");
                 }
@@ -110,6 +116,29 @@ public class PassiveReplicationThread implements IReplicationThread {
                     }
                 }
             }
+        }
+    }
+
+    private void handleIndexCreate() throws IOException {
+        inBuffer = ReplicationProtocol.readRequest(socketChannel, inBuffer);
+        LSMIndexFileProperties asterixFileProperties = ReplicationProtocol.readFileReplicationRequest(inBuffer);
+
+        String indexPath = ((ReplicationChannel) replicationChannel).replicaResourcesManager.getIndexPath
+                (asterixFileProperties);
+        String replicaFilePath = indexPath + File.separator + asterixFileProperties.getFileName();
+        LOGGER.info("Creating replica file: " + replicaFilePath);
+        File destFile = new File(replicaFilePath);
+        destFile.createNewFile();
+        long fileSize = asterixFileProperties.getFileSize();
+
+        RandomAccessFile fileOutputStream = new RandomAccessFile(destFile, "rw");
+        FileChannel fileChannel = fileOutputStream.getChannel();
+        fileOutputStream.setLength(fileSize);
+        LOGGER.info("Downlading File : " + destFile + " with size: " + fileSize);
+        NetworkingUtil.downloadFile(fileChannel, socketChannel);
+        fileChannel.force(true);
+        if (asterixFileProperties.requiresAck()) {
+            ReplicationProtocol.sendAck(socketChannel);
         }
     }
 
@@ -219,6 +248,8 @@ public class PassiveReplicationThread implements IReplicationThread {
         inBuffer = ReplicationProtocol.readRequest(socketChannel, inBuffer);
         ReplicaFilesRequest request = ReplicationProtocol.readReplicaFileRequest(inBuffer);
 
+        LOGGER.info("Get replica files request from: " + socketChannel.getRemoteAddress() + " Request: " + request);
+
         LSMIndexFileProperties fileProperties = new LSMIndexFileProperties();
 
         List<String> filesList;
@@ -312,6 +343,8 @@ public class PassiveReplicationThread implements IReplicationThread {
                     //if the log partition belongs to a partitions hosted on this node, replicate it
                     if (replicationChannel.nodeHostedPartitions.contains(remoteLog.getResourcePartition())) {
                         replicationChannel.getLogManager().log(remoteLog);
+                        LOGGER.info("Persisting log: " + remoteLog.getLogRecordForDisplay());
+                        replicationChannel.streamingReplicationThread.submit(remoteLog);
                     }
                     break;
                 case LogType.JOB_COMMIT:

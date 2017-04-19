@@ -88,11 +88,11 @@ public class ReplicationChannel extends AbstractReplicationChannel {
 
     protected final LinkedBlockingQueue<LSMComponentLSNSyncTask> lsmComponentRemoteLSN2LocalLSNMappingTaskQ;
     protected final Map<String, RemoteLogMapping> replicaUniqueLSN2RemoteMapping;
-    protected final Set<Integer> nodeHostedPartitions;
     protected final Object flushLogslock = new Object();
     protected final Map<String, LSMComponentProperties> lsmComponentId2PropertiesMap;
     protected final LSMComponentsSyncService lsmComponentLSNMappingService;
     protected final ReplicationNotifier replicationNotifier;
+    protected final StreamingReplicationThread streamingReplicationThread;
 
     public ReplicationChannel(String nodeId, ReplicationProperties replicationProperties, ILogManager logManager,
             IReplicaResourcesManager replicaResoucesManager, IReplicationManager replicationManager,
@@ -104,17 +104,7 @@ public class ReplicationChannel extends AbstractReplicationChannel {
         replicaUniqueLSN2RemoteMapping = new ConcurrentHashMap<>();
         lsmComponentLSNMappingService = new LSMComponentsSyncService();
         replicationNotifier = new ReplicationNotifier();
-        Map<String, ClusterPartition[]> nodePartitions =
-                asterixAppRuntimeContextProvider.getAppContext().getMetadataProperties().getNodePartitions();
-        Set<String> nodeReplicationClients = replicationProperties.getRemotePrimaryReplicasIds(nodeId);
-        List<Integer> clientsPartitions = new ArrayList<>();
-        for (String clientId : nodeReplicationClients) {
-            for (ClusterPartition clusterPartition : nodePartitions.get(clientId)) {
-                clientsPartitions.add(clusterPartition.getPartitionId());
-            }
-        }
-        nodeHostedPartitions = new HashSet<>(clientsPartitions.size());
-        nodeHostedPartitions.addAll(clientsPartitions);
+        this.streamingReplicationThread = new StreamingReplicationThread(appContextProvider);
     }
 
     @Override

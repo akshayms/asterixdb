@@ -70,6 +70,7 @@ import org.apache.asterix.metadata.api.IMetadataNode;
 import org.apache.asterix.metadata.bootstrap.MetadataBootstrap;
 import org.apache.asterix.replication.management.ReplicationChannel;
 import org.apache.asterix.replication.management.ReplicationManager;
+import org.apache.asterix.replication.management.StreamingReplicationChannel;
 import org.apache.asterix.replication.recovery.RemoteRecoveryManager;
 import org.apache.asterix.replication.storage.ReplicaResourcesManager;
 import org.apache.asterix.runtime.transaction.GlobalResourceIdFactoryProvider;
@@ -240,6 +241,9 @@ public class NCAppRuntimeContext implements IAppRuntimeContext {
             replicationChannel = new ReplicationChannel(nodeId, replicationProperties, txnSubsystem.getLogManager(),
                     replicaResourcesManager, replicationManager, ncServiceContext,
                     asterixAppRuntimeContextProvider);
+//            replicationChannel = new StreamingReplicationChannel(nodeId, replicationProperties, txnSubsystem.getLogManager(),
+//                    replicaResourcesManager, replicationManager, ncServiceContext, asterixAppRuntimeContextProvider);
+
 
             remoteRecoveryManager = new RemoteRecoveryManager(replicationManager, this, replicationProperties);
 

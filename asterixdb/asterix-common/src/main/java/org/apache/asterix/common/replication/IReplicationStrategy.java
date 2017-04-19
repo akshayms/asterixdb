@@ -31,6 +31,11 @@ public interface IReplicationStrategy {
      */
     boolean isMatch(int datasetId);
 
+
+    boolean replicateLog();
+
+    boolean replicateLog(int datasetId);
+
     /**
      * @param nodeId
      * @return The set of nodes that replicate data on {@code nodeId}.

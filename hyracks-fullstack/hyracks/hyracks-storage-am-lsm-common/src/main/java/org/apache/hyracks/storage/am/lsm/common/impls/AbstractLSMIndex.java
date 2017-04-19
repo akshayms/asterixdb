@@ -281,6 +281,7 @@ public abstract class AbstractLSMIndex implements ILSMIndex {
         }
 
         //create replication job and submit it
+
         LSMIndexReplicationJob job =
                 new LSMIndexReplicationJob(this, ctx, componentFiles, operation, executionType, opType);
         try {

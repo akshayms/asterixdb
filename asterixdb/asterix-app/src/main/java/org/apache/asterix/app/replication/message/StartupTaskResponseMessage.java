@@ -47,6 +47,7 @@ public class StartupTaskResponseMessage implements INCLifecycleMessage {
         HyracksDataException exception = null;
         try {
             for (INCLifecycleTask task : tasks) {
+                LOGGER.info("Performing task: " + task.toString());
                 task.perform(cs);
             }
         } catch (HyracksDataException e) {

@@ -67,4 +67,14 @@ public class ReplicaFilesRequest {
     public Set<String> getExistingFiles() {
         return existingFiles;
     }
+
+    @Override
+    public String toString() {
+        StringBuilder builder = new StringBuilder();
+        builder.append("Partition IDs: ");
+        partitionIds.forEach(p -> builder.append(p).append(" , "));
+        builder.append(" , Existing files: ");
+        existingFiles.forEach(e -> builder.append(e).append(" , "));
+        return builder.toString();
+    }
 }

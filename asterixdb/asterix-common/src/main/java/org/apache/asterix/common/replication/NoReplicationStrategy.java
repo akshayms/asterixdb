@@ -31,6 +31,16 @@ public class NoReplicationStrategy implements IReplicationStrategy {
     }
 
     @Override
+    public boolean replicateLog() {
+        return false;
+    }
+
+    @Override
+    public boolean replicateLog(int datasetId) {
+        return false;
+    }
+
+    @Override
     public boolean isParticipant(String nodeId) {
         return false;
     }

@@ -32,15 +32,8 @@ import java.nio.channels.SocketChannel;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.Iterator;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.Map.Entry;
-import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
@@ -273,6 +266,51 @@ public class ReplicationManager extends AbstractReplicationManager {
         currentTxnLogBuffer.append(logRecord);
     }
 
+    private void processIndexCreate(IReplicationJob job, Map<String, SocketChannel> replicaSockets, ByteBuffer
+            requestBuffer) throws HyracksDataException {
+        String jobFile = job.getJobFiles().iterator().next();
+        ByteBuffer responseBuffer = null;
+        if (requestBuffer == null) {
+            requestBuffer = ByteBuffer.allocate(INITIAL_BUFFER_SIZE);
+        }
+        try {
+            IndexFileProperties indexFileRef = localResourceRepo.getIndexFileRef(jobFile);
+            int jobPartition = indexFileRef.getPartitionId();
+            if (replicaSockets == null) {
+                replicaSockets = getActiveRemoteReplicasSockets();
+            }
+            RandomAccessFile fromFile = new RandomAccessFile(jobFile, "r");
+            FileChannel fileChannel = fromFile.getChannel();
+            long fileSize = fileChannel.size();
+            LSMIndexFileProperties asterixFileProperties = new LSMIndexFileProperties();
+            asterixFileProperties.initialize(jobFile, fileSize, nodeId, false, -1, true);
+            requestBuffer = ReplicationProtocol.writeFileReplicationRequest(requestBuffer, asterixFileProperties,
+                    ReplicationRequestType.CREATE_INDEX);
+            for (Map.Entry<String, SocketChannel> replicaSocket : replicaSockets.entrySet()) {
+                if (!replica2PartitionsMap.get(replicaSocket.getKey()).contains(jobPartition)) {
+                    continue;
+                }
+                NetworkingUtil.transferBufferToChannel(replicaSocket.getValue(), requestBuffer);
+                NetworkingUtil.sendFile(fileChannel, replicaSocket.getValue());
+                ReplicationRequestType responseType = waitForResponse(replicaSocket.getValue(), responseBuffer);
+                if (responseType != ReplicationRequestType.ACK) {
+                    throw new IOException("No ack from replica!");
+                }
+                closeReplicaSockets(replicaSockets);
+            }
+        } catch (HyracksDataException e) {
+            e.printStackTrace();
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+        finally {
+            if (job.getExecutionType() == ReplicationExecutionType.SYNC) {
+                //closeReplicaSockets(replicaSockets);
+                exitReplicatedLSMComponent(job);
+            }
+        }
+    }
+
     /**
      * Processes the replication job based on its specifications
      *
@@ -288,11 +326,15 @@ public class ReplicationManager extends AbstractReplicationManager {
             throws IOException {
         try {
 
+            if (job.getJobType() == ReplicationJobType.INDEX_CREATE) {
+                processIndexCreate(job, replicasSockets, requestBuffer);
+            }
             //all of the job's files belong to a single storage partition.
             //get any of them to determine the partition from the file path.
             String jobFile = job.getJobFiles().iterator().next();
             IndexFileProperties indexFileRef = localResourceRepo.getIndexFileRef(jobFile);
-            if (!replicationStrategy.isMatch(indexFileRef.getDatasetId())) {
+            if (!replicationStrategy.isMatch(indexFileRef.getDatasetId()) || job.getJobType() != ReplicationJobType
+                    .METADATA) {
                 return;
             }
 
@@ -1219,6 +1261,7 @@ public class ReplicationManager extends AbstractReplicationManager {
             while (true) {
                 try {
                     event = replicaEventsQ.take();
+                    LOGGER.info("New replica event received at " + nodeId + " event: " + event.getEventType().name());
 
                     switch (event.getEventType()) {
                         case NODE_FAILURE:

@@ -24,7 +24,8 @@ public interface IReplicationJob {
 
     public enum ReplicationJobType {
         LSM_COMPONENT,
-        METADATA
+        METADATA,
+        INDEX_CREATE
     }
 
     public enum ReplicationOperation {
