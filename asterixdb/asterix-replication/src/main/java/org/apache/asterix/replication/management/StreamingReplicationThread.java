@@ -137,6 +137,18 @@ public class StreamingReplicationThread implements IReplicationThread {
         return null;
     }
 
+    public void flushAllWriteQs() {
+        LOGGER.info("RECOVERY?? FLUSHING ALL WRITE BUFFERS AGAIN");
+        partitionWriteBuffer.keySet().forEach(x -> {
+            try {
+                flushWriteBufferToQ(x);
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+        });
+    }
+
+
     public void startThreads() {
         ExecutorService service = Executors.newFixedThreadPool(nodePartitions.size());
         nodePartitions.stream()

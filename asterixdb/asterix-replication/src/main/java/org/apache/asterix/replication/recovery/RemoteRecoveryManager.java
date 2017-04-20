@@ -40,6 +40,8 @@ import org.apache.asterix.common.replication.IRemoteRecoveryManager;
 import org.apache.asterix.common.replication.IReplicationManager;
 import org.apache.asterix.common.transactions.ILogManager;
 import org.apache.asterix.common.transactions.IRecoveryManager;
+import org.apache.asterix.replication.management.ReplicationChannel;
+import org.apache.asterix.replication.management.StreamingReplicationThread;
 import org.apache.asterix.replication.storage.ReplicaResourcesManager;
 import org.apache.asterix.transaction.management.resource.PersistentLocalResourceRepository;
 import org.apache.hyracks.api.exceptions.HyracksDataException;
@@ -51,6 +53,7 @@ public class RemoteRecoveryManager implements IRemoteRecoveryManager {
     private final IAppRuntimeContext runtimeContext;
     private final ReplicationProperties replicationProperties;
     private Map<String, Set<String>> failbackRecoveryReplicas;
+    private boolean isStreamingReplication = true;
 
     public RemoteRecoveryManager(IReplicationManager replicationManager, IAppRuntimeContext runtimeContext,
             ReplicationProperties replicationProperties) {
@@ -145,6 +148,14 @@ public class RemoteRecoveryManager implements IRemoteRecoveryManager {
         }
     }
 
+    private void waitForRMTTermination() {
+        // TODO: Async request or blocking call?
+        // Ideally, this call should not be required. Fix the issue with work stealing in RMT class.
+        StreamingReplicationThread manager = ((ReplicationChannel) runtimeContext.getReplicationChannel())
+                .getStreamingReplicationThread();
+        manager.flushAllWriteQs();
+    }
+
     @Override
     public void takeoverPartitons(Integer[] partitions) throws IOException, ACIDException {
         /**
@@ -153,8 +164,17 @@ public class RemoteRecoveryManager implements IRemoteRecoveryManager {
          * notified that the takeover failed.
          */
         Set<Integer> partitionsToTakeover = new HashSet<>(Arrays.asList(partitions));
-        replayReplicaPartitionLogs(partitionsToTakeover, false);
-
+        if (isStreamingReplication) {
+            waitForRMTTermination();
+            try {
+                //TODO: This is broken, add notification to come from StreamingRepThread classs
+                Thread.sleep(10000);
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+        } else {
+            replayReplicaPartitionLogs(partitionsToTakeover, false);
+        }
         //mark these partitions as active in this node
         PersistentLocalResourceRepository resourceRepository = (PersistentLocalResourceRepository) runtimeContext
                 .getLocalResourceRepository();

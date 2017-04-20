@@ -107,6 +107,11 @@ public class ReplicationChannel extends AbstractReplicationChannel {
         this.streamingReplicationThread = new StreamingReplicationThread(appContextProvider);
     }
 
+    public StreamingReplicationThread getStreamingReplicationThread() {
+        //TODO: Move to StreamingReplicationChannel
+        return streamingReplicationThread;
+    }
+
     @Override
     public void run() {
         Thread.currentThread().setName("Replication Channel Thread");
