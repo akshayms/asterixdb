@@ -32,6 +32,8 @@ import java.io.RandomAccessFile;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
 import java.nio.channels.SocketChannel;
+import java.nio.file.Files;
+import java.nio.file.Paths;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -269,10 +271,17 @@ public class PassiveReplicationThread implements IReplicationThread {
             //start sending files
             for (String filePath : filesList) {
                 // Send only files of datasets that are replciated.
-                IndexFileProperties indexFileRef = replicationChannel.localResourceRep.getIndexFileRef(filePath);
-                if (!repStrategy.isMatch(indexFileRef.getDatasetId())) {
+
+                if (!Files.isDirectory(Paths.get(filePath))) {
+                    LOGGER.info("Not a regular file! " + filePath);
                     continue;
                 }
+
+                IndexFileProperties indexFileRef = replicationChannel.localResourceRep.getIndexFileRef(filePath);
+                if (!repStrategy.isMatchForFailover(indexFileRef.getDatasetId())) {
+                    continue;
+                }
+
                 String relativeFilePath = StoragePathUtil.getIndexFileRelativePath(filePath);
                 //if the file already exists on the requester, skip it
                 if (!requesterExistingFiles.contains(relativeFilePath)) {

@@ -1149,6 +1149,8 @@ public class StreamingReplicationManager extends AbstractReplicationManager {
                 File destFile = new File(destFilePath);
                 destFile.createNewFile();
 
+                LOGGER.info("Creating file: " + destFile.getPath());
+
                 try (RandomAccessFile fileOutputStream = new RandomAccessFile(destFile, "rw");
                      FileChannel fileChannel = fileOutputStream.getChannel();) {
                     fileOutputStream.setLength(fileProperties.getFileSize());

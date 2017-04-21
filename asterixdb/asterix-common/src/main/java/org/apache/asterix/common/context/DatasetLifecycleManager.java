@@ -577,7 +577,7 @@ public class DatasetLifecycleManager implements IDatasetLifecycleManager, ILifeC
     @Override
     public void flushDataset(IReplicationStrategy replicationStrategy) throws HyracksDataException {
         for (DatasetResource dsr : datasets.values()) {
-            if (replicationStrategy.isMatch(dsr.getDatasetID())) {
+            if (replicationStrategy.isMatchForFailover(dsr.getDatasetID())) {
                 flushDatasetOpenIndexes(dsr.getDatasetInfo(), false);
             }
         }

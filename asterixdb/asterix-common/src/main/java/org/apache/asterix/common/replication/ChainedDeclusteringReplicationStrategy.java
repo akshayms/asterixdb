@@ -46,6 +46,11 @@ public class ChainedDeclusteringReplicationStrategy implements IReplicationStrat
     }
 
     @Override
+    public boolean isMatchForFailover(int datasetId) {
+        return true;
+    }
+
+    @Override
     public boolean replicateLog() {
         return true;
     }

@@ -31,6 +31,10 @@ public interface IReplicationStrategy {
      */
     boolean isMatch(int datasetId);
 
+    default boolean isMatchForFailover(int datasetId) {
+        return false;
+    }
+
 
     boolean replicateLog();
 
