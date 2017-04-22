@@ -29,8 +29,8 @@ public class CheckpointManagerFactory {
     }
 
     public static ICheckpointManager create(ITransactionSubsystem txnSubsystem,
-            CheckpointProperties checkpointProperties, boolean replicationEnabled) {
-        if (!replicationEnabled) {
+            CheckpointProperties checkpointProperties, boolean replicationEnabled, boolean isStreaming) {
+        if (!replicationEnabled || isStreaming) {
             return new CheckpointManager(txnSubsystem, checkpointProperties);
         } else {
             return new ReplicationCheckpointManager(txnSubsystem, checkpointProperties);

@@ -272,7 +272,7 @@ public class PassiveReplicationThread implements IReplicationThread {
             for (String filePath : filesList) {
                 // Send only files of datasets that are replciated.
 
-                if (!Files.isDirectory(Paths.get(filePath))) {
+                if (Files.isDirectory(Paths.get(filePath))) {
                     LOGGER.info("Not a regular file! " + filePath);
                     continue;
                 }
