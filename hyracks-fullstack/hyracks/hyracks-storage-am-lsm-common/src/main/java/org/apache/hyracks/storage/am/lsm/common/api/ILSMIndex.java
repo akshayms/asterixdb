@@ -22,6 +22,7 @@ package org.apache.hyracks.storage.am.lsm.common.api;
 import java.util.List;
 
 import org.apache.hyracks.api.exceptions.HyracksDataException;
+import org.apache.hyracks.api.io.IIOManager;
 import org.apache.hyracks.api.replication.IReplicationJob.ReplicationOperation;
 import org.apache.hyracks.dataflow.common.data.accessors.ITupleReference;
 import org.apache.hyracks.storage.am.common.api.IIndex;
@@ -133,4 +134,10 @@ public interface ILSMIndex extends IIndex {
      * @return true if the index is durable. Otherwise false.
      */
     boolean isDurable();
+
+    IIOManager getIOManager();
+
+    default boolean isReplicaIndex() {
+        return false;
+    }
 }

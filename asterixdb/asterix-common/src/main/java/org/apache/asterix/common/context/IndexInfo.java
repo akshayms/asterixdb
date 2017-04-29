@@ -24,11 +24,13 @@ public class IndexInfo extends Info {
     private final ILSMIndex index;
     private final long resourceId;
     private final int datasetId;
+    private final boolean isInactive;
 
-    public IndexInfo(ILSMIndex index, int datasetId, long resourceId) {
+    public IndexInfo(ILSMIndex index, int datasetId, long resourceId, boolean isInactive) {
         this.index = index;
         this.datasetId = datasetId;
         this.resourceId = resourceId;
+        this.isInactive = isInactive;
     }
 
     public ILSMIndex getIndex() {
@@ -41,5 +43,18 @@ public class IndexInfo extends Info {
 
     public int getDatasetId() {
         return datasetId;
+    }
+
+    @Override
+    public String toString() {
+        StringBuilder out = new StringBuilder();
+        out.append("Index: ").append(index);
+        out.append(" Resource ID: ").append(resourceId);
+        out.append(" DatasetID: ").append(datasetId);
+        return out.toString();
+    }
+
+    public boolean isInactive() {
+        return isInactive;
     }
 }

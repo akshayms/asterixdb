@@ -251,7 +251,7 @@ public class NCAppRuntimeContext implements IAppRuntimeContext {
                         replicaResourcesManager, replicationManager, ncServiceContext, asterixAppRuntimeContextProvider);
             } else {
                 // Change to streaming replication
-                replicationChannel = new ReplicationChannel(nodeId, replicationProperties, txnSubsystem.getLogManager(),
+                replicationChannel = new StreamingReplicationChannel(nodeId, replicationProperties, txnSubsystem.getLogManager(),
                         replicaResourcesManager, replicationManager, ncServiceContext, asterixAppRuntimeContextProvider);
             }
 

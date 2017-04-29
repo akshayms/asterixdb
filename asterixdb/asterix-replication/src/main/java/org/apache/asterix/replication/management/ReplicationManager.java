@@ -1073,6 +1073,7 @@ public class ReplicationManager extends AbstractReplicationManager {
 
     @Override
     public void requestFlushLaggingReplicaIndexes(long nonSharpCheckpointTargetLSN) throws IOException {
+        LOGGER.info("Request lagging replica index flush at: " + nonSharpCheckpointTargetLSN);
         long startLSN = logManager.getAppendLSN();
         Set<String> replicaIds = getActiveReplicasIds();
         if (replicaIds.isEmpty()) {

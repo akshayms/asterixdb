@@ -353,7 +353,7 @@ public class PassiveReplicationThread implements IReplicationThread {
                     if (replicationChannel.nodeHostedPartitions.contains(remoteLog.getResourcePartition())) {
                         replicationChannel.getLogManager().log(remoteLog);
                         LOGGER.info("Persisting log: " + remoteLog.getLogRecordForDisplay());
-                        replicationChannel.streamingReplicationThread.submit(remoteLog);
+                        replicationChannel.streamingReplicationJobManager.submit(remoteLog);
                     }
                     break;
                 case LogType.JOB_COMMIT:
@@ -366,6 +366,7 @@ public class PassiveReplicationThread implements IReplicationThread {
                     replicationChannel.getLogManager().log(jobTerminationLog);
                     break;
                 case LogType.FLUSH:
+                    LOGGER.info("Flush record: " + remoteLog.getLogRecordForDisplay());
                     //store mapping information for flush logs to use them in incoming LSM components.
                     RemoteLogMapping flushLogMap = new RemoteLogMapping();
                     flushLogMap.setRemoteNodeID(remoteLog.getNodeId());

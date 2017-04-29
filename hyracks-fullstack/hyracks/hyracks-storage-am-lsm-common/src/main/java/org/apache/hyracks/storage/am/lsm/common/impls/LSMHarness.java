@@ -27,6 +27,7 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 
 import org.apache.hyracks.api.exceptions.HyracksDataException;
+import org.apache.hyracks.api.io.IODeviceHandle;
 import org.apache.hyracks.api.replication.IReplicationJob.ReplicationOperation;
 import org.apache.hyracks.data.std.api.IValueReference;
 import org.apache.hyracks.dataflow.common.data.accessors.ITupleReference;
@@ -110,7 +111,9 @@ public class LSMHarness implements ILSMHarness {
                         }
                         break;
                     case MERGE:
+
                         if (ctx.getComponentHolder().size() < 2) {
+                            // TODO: Add a check with Primary Index OpTracker
                             // There is only a single component. There is nothing to merge.
                             return false;
                         }
@@ -454,7 +457,9 @@ public class LSMHarness implements ILSMHarness {
             callback.afterFinalize(LSMOperationType.FLUSH, null);
             return;
         }
-        lsmIndex.scheduleFlush(ctx, callback);
+        if (lsmIndex.isDurable()) {
+            lsmIndex.scheduleFlush(ctx, callback);
+        }
     }
 
     @Override
@@ -462,7 +467,35 @@ public class LSMHarness implements ILSMHarness {
             throws HyracksDataException, IndexException {
         if (LOGGER.isLoggable(Level.INFO)) {
             LOGGER.info("Started a flush operation for index: " + lsmIndex + " ...");
+            LOGGER.info("Index Unique Identifier: " + operation.getIndexUniqueIdentifier());
+//            // TODO: If this belongs to an inactive partition, then do not flush, send a request to the remote
+//            // machine to flush and flush when there is a local flush triggered on the remote machine.
+//            boolean inActivePartitions = false;
+//            for (IODeviceHandle deviceHandle : lsmIndex.getIOManager().getIODevices()) {
+//                // FIXME: If there are more than 10 partitions -- 1 and 10 will pass the startsWith test
+//                if (operation.getIndexUniqueIdentifier().startsWith(deviceHandle.getMount().getPath())) {
+//                    LOGGER.info("Index path matches: " + deviceHandle.getMount().getPath());
+//                    inActivePartitions = true;
+//                    break;
+//                }
+//            }
+//            if (!inActivePartitions) {
+//                // Its an inactive partition, no flush required.
+//                LOGGER.info("Aborting flush request for Index: " + operation.getIndexUniqueIdentifier());
+//                // TODO: Check if these calls reschedule a flush and impact on checkpointing.
+//                exitComponents(ctx, LSMOperationType.FLUSH, null, true);
+//                operation.getCallback().afterFinalize(LSMOperationType.FLUSH, null);
+//                return;
+//            }
         }
+//        LOGGER.info("Is index durable: " + lsmIndex.isDurable());
+//        if (!lsmIndex.isDurable()) {
+//            LOGGER.info("Aborting flush : "  + lsmIndex);
+//            operation.getCallback().afterOperation(LSMOperationType.FLUSH, null, null);
+//            exitComponents(ctx, LSMOperationType.FLUSH, null, true);
+//            operation.getCallback().afterFinalize(LSMOperationType.FLUSH, null);
+//            return;
+//        }
 
         ILSMDiskComponent newComponent = null;
         try {

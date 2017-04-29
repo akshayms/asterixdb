@@ -144,7 +144,7 @@
 
   <property>
     <name>txn.log.checkpoint.lsnthreshold</name>
-    <value>67108864</value>
+    <value>671088640</value>
     <description>The size of the window that the maximum LSN is allowed to
       be ahead of the checkpoint LSN by. (Default = ""67108864" // 64M)
     </description>

@@ -21,6 +21,7 @@ package org.apache.asterix.common.context;
 
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.stream.Collectors;
 
 import org.apache.asterix.common.exceptions.ACIDException;
 import org.apache.asterix.common.ioopcallbacks.AbstractLSMIOOperationCallback;
@@ -91,12 +92,22 @@ public class PrimaryIndexOperationTracker extends BaseOperationTracker {
         }
     }
 
+    public void flushInactiveIndex() throws HyracksDataException {
+        Set<ILSMIndex> inactiveIndexs = dsInfo.getDatasetIndexes(); // Gets all indexes
+        Set<ILSMIndex> activeIndexs = dsInfo.getDatasetLocalIndexes();
+        inactiveIndexs.remove(activeIndexs);
+
+
+    }
+
     public void flushIfRequested() throws HyracksDataException {
         // If we need a flush, and this is the last completing operation, then schedule the flush,
         // or if there is a flush scheduled by the checkpoint (flushOnExit), then schedule it
 
         boolean needsFlush = false;
+        //TODO: Verify
         Set<ILSMIndex> indexes = dsInfo.getDatasetIndexes();
+        //Set<ILSMIndex> indexes = dsInfo.getDatasetLocalIndexes();
 
         if (!flushOnExit) {
             for (ILSMIndex lsmIndex : indexes) {
@@ -142,6 +153,7 @@ public class PrimaryIndexOperationTracker extends BaseOperationTracker {
 
     //This method is called sequentially by LogPage.notifyFlushTerminator in the sequence flushes were scheduled.
     public synchronized void triggerScheduleFlush(LogRecord logRecord) throws HyracksDataException {
+        //for (ILSMIndex lsmIndex : dsInfo.getDatasetLocalIndexes()) {
         for (ILSMIndex lsmIndex : dsInfo.getDatasetIndexes()) {
 
             //get resource

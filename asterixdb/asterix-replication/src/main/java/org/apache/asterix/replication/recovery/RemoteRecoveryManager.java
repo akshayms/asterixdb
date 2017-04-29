@@ -41,7 +41,7 @@ import org.apache.asterix.common.replication.IReplicationManager;
 import org.apache.asterix.common.transactions.ILogManager;
 import org.apache.asterix.common.transactions.IRecoveryManager;
 import org.apache.asterix.replication.management.ReplicationChannel;
-import org.apache.asterix.replication.management.StreamingReplicationThread;
+import org.apache.asterix.replication.management.StreamingReplicationJobManager;
 import org.apache.asterix.replication.storage.ReplicaResourcesManager;
 import org.apache.asterix.transaction.management.resource.PersistentLocalResourceRepository;
 import org.apache.hyracks.api.exceptions.HyracksDataException;
@@ -151,8 +151,8 @@ public class RemoteRecoveryManager implements IRemoteRecoveryManager {
     private void waitForRMTTermination() {
         // TODO: Async request or blocking call?
         // Ideally, this call should not be required. Fix the issue with work stealing in RMT class.
-        StreamingReplicationThread manager = ((ReplicationChannel) runtimeContext.getReplicationChannel())
-                .getStreamingReplicationThread();
+        StreamingReplicationJobManager manager = ((ReplicationChannel) runtimeContext.getReplicationChannel())
+                .getStreamingReplicationJobManager();
         manager.flushAllWriteQs();
     }
 

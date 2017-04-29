@@ -150,6 +150,8 @@ public class ClusterStateManager implements IClusterStateManager {
         for (ClusterPartition p : clusterPartitions.values()) {
             if (!p.isActive()) {
                 state = ClusterState.UNUSABLE;
+                LOGGER.info("Partition "  + p.getPartitionId() + " in node " + getCurrentMetadataNodeId() +
+                        " inactive");
                 LOGGER.info("Cluster is in UNUSABLE state");
                 return;
             }

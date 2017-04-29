@@ -22,6 +22,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 import org.apache.hyracks.storage.am.lsm.common.api.ILSMIndex;
 
@@ -63,6 +64,12 @@ public class DatasetInfo extends Info implements Comparable<DatasetInfo> {
         setNumActiveIOOps(getNumActiveIOOps() - 1);
         //notify threads waiting on this dataset info
         notifyAll();
+    }
+
+    public synchronized  Set<ILSMIndex> getDatasetLocalIndexes() {
+        Set<ILSMIndex> datasetIndexes = new HashSet<>();
+        return getIndexes().values().stream().filter(IndexInfo::isOpen).filter(index -> !index.isInactive()).map
+                (IndexInfo::getIndex).collect(Collectors.toSet());
     }
 
     public synchronized Set<ILSMIndex> getDatasetIndexes() {

@@ -6,13 +6,9 @@ import org.apache.asterix.common.config.ReplicationProperties;
 import org.apache.asterix.common.dataflow.LSMIndexUtil;
 import org.apache.asterix.common.replication.*;
 import org.apache.asterix.common.storage.IndexFileProperties;
-import org.apache.asterix.common.transactions.IAppRuntimeContextProvider;
-import org.apache.asterix.common.transactions.ILogManager;
-import org.apache.asterix.common.transactions.ILogRecord;
-import org.apache.asterix.common.transactions.LogType;
+import org.apache.asterix.common.transactions.*;
 import org.apache.asterix.event.schema.cluster.Node;
 import org.apache.asterix.replication.functions.ReplicaFilesRequest;
-import org.apache.asterix.replication.functions.ReplicaIndexFlushRequest;
 import org.apache.asterix.replication.functions.ReplicationProtocol;
 import org.apache.asterix.replication.logging.ReplicationLogBuffer;
 import org.apache.asterix.replication.logging.TxnLogReplicator;
@@ -23,8 +19,14 @@ import org.apache.asterix.transaction.management.resource.PersistentLocalResourc
 import org.apache.hyracks.api.application.IClusterLifecycleListener;
 import org.apache.hyracks.api.exceptions.HyracksDataException;
 import org.apache.hyracks.api.replication.IReplicationJob;
+import org.apache.hyracks.storage.am.common.api.IndexException;
+import org.apache.hyracks.storage.am.common.impls.NoOpOperationCallback;
+import org.apache.hyracks.storage.am.common.ophelpers.IndexOperation;
 import org.apache.hyracks.storage.am.lsm.common.api.ILSMDiskComponent;
+import org.apache.hyracks.storage.am.lsm.common.api.ILSMIndex;
+import org.apache.hyracks.storage.am.lsm.common.api.ILSMIndexAccessor;
 import org.apache.hyracks.storage.am.lsm.common.api.ILSMIndexReplicationJob;
+import org.apache.hyracks.storage.common.file.LocalResource;
 import org.apache.hyracks.util.StorageUtil;
 
 import java.io.*;
@@ -36,6 +38,8 @@ import java.nio.channels.SocketChannel;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -78,8 +82,7 @@ public class StreamingReplicationManager extends AbstractReplicationManager {
     private final StreamingReplicationManager.ReplicasEventsMonitor replicationMonitor;
     //dummy job used to stop ReplicationJobsProccessor thread.
     private static final IReplicationJob REPLICATION_JOB_POISON_PILL = new ReplicationJob(
-            IReplicationJob.ReplicationJobType.METADATA,
-            IReplicationJob.ReplicationOperation.REPLICATE, IReplicationJob.ReplicationExecutionType.ASYNC, null);
+            IReplicationJob.ReplicationJobType.METADATA, IReplicationJob.ReplicationOperation.REPLICATE, IReplicationJob.ReplicationExecutionType.ASYNC, null);
     //used to identify the correct IP address when the node has multiple network interfaces
     private String hostIPAddressFirstOctet = null;
 
@@ -92,6 +95,17 @@ public class StreamingReplicationManager extends AbstractReplicationManager {
     private final ByteBuffer txnLogsBatchSizeBuffer = ByteBuffer.allocate(Integer.BYTES);
     private final IReplicationStrategy replicationStrategy;
     private final PersistentLocalResourceRepository localResourceRepo;
+
+    // Streaming replication changes
+//    private static final Object resourceMapLock = new Object();
+//    private final BlockingQueue<ByteBuffer> emptyReplicationLogBufferQ;
+//    private final Map<Integer, BlockingQueue<ByteBuffer>> partitionReplicationQs;
+//    private Set<Integer> nodePartitions;
+//    private List<Object> partitionMonitors;
+//    private final Map<Integer, ByteBuffer> partitionWriteBuffer;
+//    private static final int DEFAULT_LOG_PAGE_SIZE = 15000; // TODO: Change this
+//    private static final int MAX_QUEUE_LENGTH = 15;
+//    private Map<Long, LocalResource> resourceMap;
 
     //TODO this class needs to be refactored by moving its private classes to separate files
     //and possibly using MessageBroker to send/receive remote replicas events.
@@ -152,10 +166,119 @@ public class StreamingReplicationManager extends AbstractReplicationManager {
             emptyLogBuffersQ
                     .offer(new ReplicationLogBuffer(this, logBufferSize, replicationProperties.getLogBatchSize()));
         }
+
+        // Streaming replication related
+//        this.emptyReplicationLogBufferQ = new LinkedBlockingQueue<>();
+//        this.partitionReplicationQs = new ConcurrentHashMap<>();
+//        this.nodePartitions = asterixAppRuntimeContextProvider.getAppContext().getMetadataProperties().getClusterPartitions()
+//                .keySet();
+//        this.partitionWriteBuffer = new ConcurrentHashMap<>();
+
     }
 
-    @Override
-    public void submitJob(IReplicationJob job) throws IOException {
+//    private void prepareStreamingReplication() {
+//        nodePartitions.stream().forEach(partitionId -> {
+//            // 3 buffers to start out with per partition on average.
+//            emptyReplicationLogBufferQ.offer(ByteBuffer.allocate(DEFAULT_LOG_PAGE_SIZE));
+//            emptyReplicationLogBufferQ.offer(ByteBuffer.allocate(DEFAULT_LOG_PAGE_SIZE));
+//            partitionWriteBuffer.put(partitionId, ByteBuffer.allocate(DEFAULT_LOG_PAGE_SIZE));
+//            partitionReplicationQs.put(partitionId, new LinkedBlockingQueue<>(MAX_QUEUE_LENGTH));
+//            partitionMonitors.add(new Object());
+//        });
+//    }
+//
+//    public void flushAllWriteQs() {
+//        LOGGER.info("RECOVERY?? FLUSHING ALL WRITE BUFFERS AGAIN");
+//        partitionWriteBuffer.keySet().forEach(x -> {
+//            try {
+//                flushWriteBufferToQ(x);
+//            } catch (InterruptedException e) {
+//                e.printStackTrace();
+//            }
+//        });
+//    }
+//
+//    public void startThreads() {
+//        ExecutorService service = Executors.newFixedThreadPool(nodePartitions.size());
+//        nodePartitions.stream()
+//                .forEach(partition -> service.submit(new StreamingReplicationJobManager.ReplicationMaterialzationThread(partition,
+//                        partitionReplicationQs.get(partition), partitionWriteBuffer.get(partition), partitionMonitors
+//                        .get(partition))));
+//        // TODO: Handle shutdown of the executor?
+//    }
+//
+//    public void bufferCopy(ILogRecord logRecord) throws InterruptedException {
+//        int partitionId = logRecord.getResourcePartition();
+//        int logSize = logRecord.getRemoteLogSize(); // TODO: logSize or remoteLogSize?
+//        synchronized (partitionMonitors.get(partitionId)) {
+//            ByteBuffer writeBuffer = partitionWriteBuffer.get(partitionId);
+//            if (writeBuffer.remaining() < logSize) {
+//                LOGGER.log(Level.INFO, "REPL: RP" + partitionId + " write buffer is full, flushing it to Q");
+//                flushWriteBufferToQ(partitionId);
+//                writeBuffer = partitionWriteBuffer.get(partitionId);
+//            }
+//            logRecord.writeRemoteLogRecord(writeBuffer);
+//            partitionMonitors.get(partitionId).notify();
+//        }
+//    }
+//
+//    private ByteBuffer getWriteBufferForPartition(int resourcePartition) {
+//        return partitionWriteBuffer.get(resourcePartition);
+//    }
+//
+//    public synchronized void submit(ILogRecord logRecord) {
+//        try {
+//            //            switch (logRecord.getLogType()) {
+//            //                case LogType.UPDATE:
+//            //                case LogType.ENTITY_COMMIT:
+//            //                case LogType.UPSERT_ENTITY_COMMIT:
+//            //                    bufferCopy(logRecord);
+//            //                    break;
+//            //                case LogType.JOB_COMMIT:
+//            //                case LogType.ABORT:
+//            //                    break;
+//            //                case LogType.FLUSH:
+//            //                    flushAllWriteQs();
+//            //            }
+//            bufferCopy(logRecord);
+//        } catch (InterruptedException e) {
+//            e.printStackTrace();
+//        }
+//    }
+//
+//    private boolean flushWriteBufferToQ(int partition) throws InterruptedException {
+//        synchronized (partitionMonitors.get(partition)) {
+//            ByteBuffer currentBuffer = getWriteBufferForPartition(partition);
+//            if (currentBuffer.position() == 0) {
+//                return false;
+//            }
+//            Instant now = Instant.now();
+//            ByteBuffer freeBuffer = emptyReplicationLogBufferQ.take();
+//            Instant end = Instant.now();
+//            LOGGER.log(Level.INFO, "REPL: Partition " + partition + " waited " + Duration.between(now, end).toMillis
+//                    () + "ms");
+//            freeBuffer.clear();
+//            partitionWriteBuffer.replace(partition, freeBuffer);
+//            currentBuffer.flip();
+//            partitionReplicationQs.get(partition).offer(currentBuffer);
+//            partitionMonitors.get(partition).notify();
+//        }
+//        return true;
+//    }
+//
+//    public void refreshLocalResourceMap() throws HyracksDataException {
+//        this.resourceMap = ((PersistentLocalResourceRepository) localResourceRepo).loadAndGetAllResources();
+//    }
+
+    public void flushDataset(int datasetId) throws HyracksDataException {
+        asterixAppRuntimeContextProvider.getDatasetLifecycleManager().flushDataset(datasetId, false);
+    }
+
+    public void flushAllDatasets() {
+
+    }
+
+    @Override public void submitJob(IReplicationJob job) throws IOException {
         //if (job.getJobType() == ReplicationJobType.METADATA) {
         if (true) {
             if (DEBUG_MODE) {
@@ -176,8 +299,7 @@ public class StreamingReplicationManager extends AbstractReplicationManager {
                 }
                 processJob(job, null, null);
             }
-        }
-        else if (DEBUG_MODE) {
+        } else if (DEBUG_MODE) {
             LOGGER.info("Replication Job Ignored: " + job);
         }
     }
@@ -195,7 +317,6 @@ public class StreamingReplicationManager extends AbstractReplicationManager {
             replicaIds.add(nodeId);
             jobCommitAcks.put(logRecord.getJobId(), replicaIds);
         }
-
         appendToLogBuffer(logRecord);
     }
 
@@ -227,8 +348,16 @@ public class StreamingReplicationManager extends AbstractReplicationManager {
         currentTxnLogBuffer.append(logRecord);
     }
 
-    private void processIndexCreate(IReplicationJob job, Map<String, SocketChannel> replicaSockets, ByteBuffer
-            requestBuffer) throws HyracksDataException {
+    /**
+     * Create inactive partition index files
+     *
+     * @param job
+     * @param replicaSockets
+     * @param requestBuffer
+     * @throws HyracksDataException
+     */
+    private void processIndexCreate(IReplicationJob job, Map<String, SocketChannel> replicaSockets,
+            ByteBuffer requestBuffer) throws HyracksDataException {
         String jobFile = job.getJobFiles().iterator().next();
         ByteBuffer responseBuffer = null;
         if (requestBuffer == null) {
@@ -253,7 +382,8 @@ public class StreamingReplicationManager extends AbstractReplicationManager {
                 }
                 NetworkingUtil.transferBufferToChannel(replicaSocket.getValue(), requestBuffer);
                 NetworkingUtil.sendFile(fileChannel, replicaSocket.getValue());
-                ReplicationProtocol.ReplicationRequestType responseType = waitForResponse(replicaSocket.getValue(), responseBuffer);
+                ReplicationProtocol.ReplicationRequestType responseType = waitForResponse(replicaSocket.getValue(),
+                        responseBuffer);
                 if (responseType != ReplicationProtocol.ReplicationRequestType.ACK) {
                     throw new IOException("No ack from replica!");
                 }
@@ -263,8 +393,7 @@ public class StreamingReplicationManager extends AbstractReplicationManager {
             e.printStackTrace();
         } catch (IOException e) {
             e.printStackTrace();
-        }
-        finally {
+        } finally {
             if (job.getExecutionType() == IReplicationJob.ReplicationExecutionType.SYNC) {
                 //closeReplicaSockets(replicaSockets);
                 exitReplicatedLSMComponent(job);
@@ -275,12 +404,9 @@ public class StreamingReplicationManager extends AbstractReplicationManager {
     /**
      * Processes the replication job based on its specifications
      *
-     * @param job
-     *            The replication job
-     * @param replicasSockets
-     *            The remote replicas sockets to send the request to.
-     * @param requestBuffer
-     *            The buffer to use to send the request.
+     * @param job             The replication job
+     * @param replicasSockets The remote replicas sockets to send the request to.
+     * @param requestBuffer   The buffer to use to send the request.
      * @throws IOException
      */
     private void processJob(IReplicationJob job, Map<String, SocketChannel> replicasSockets, ByteBuffer requestBuffer)
@@ -294,8 +420,7 @@ public class StreamingReplicationManager extends AbstractReplicationManager {
             //get any of them to determine the partition from the file path.
             String jobFile = job.getJobFiles().iterator().next();
             IndexFileProperties indexFileRef = localResourceRepo.getIndexFileRef(jobFile);
-            if (!replicationStrategy.isMatch(indexFileRef.getDatasetId()) || job.getJobType() != IReplicationJob.ReplicationJobType
-                    .METADATA) {
+            if (!replicationStrategy.isMatch(indexFileRef.getDatasetId()) || job.getJobType() != IReplicationJob.ReplicationJobType.METADATA) {
                 return;
             }
 
@@ -322,8 +447,8 @@ public class StreamingReplicationManager extends AbstractReplicationManager {
                         //send LSMComponent properties
                         LSMComponentJob = (ILSMIndexReplicationJob) job;
                         LSMComponentProperties lsmCompProp = new LSMComponentProperties(LSMComponentJob, nodeId);
-                        requestBuffer =
-                                ReplicationProtocol.writeLSMComponentPropertiesRequest(lsmCompProp, requestBuffer);
+                        requestBuffer = ReplicationProtocol
+                                .writeLSMComponentPropertiesRequest(lsmCompProp, requestBuffer);
                         sendRequest(replicasSockets, requestBuffer);
                     }
 
@@ -337,8 +462,8 @@ public class StreamingReplicationManager extends AbstractReplicationManager {
 
                         LOGGER.log(Level.INFO, "Replicating file: " + filePath);
                         //open file for reading
-                        try (RandomAccessFile fromFile = new RandomAccessFile(filePath, "r");
-                             FileChannel fileChannel = fromFile.getChannel();) {
+                        try (RandomAccessFile fromFile = new RandomAccessFile(filePath,
+                                "r"); FileChannel fileChannel = fromFile.getChannel();) {
 
                             long fileSize = fileChannel.size();
 
@@ -349,19 +474,21 @@ public class StreamingReplicationManager extends AbstractReplicationManager {
                                  */
                                 ILSMDiskComponent diskComponent = LSMComponentJob.getLSMIndexOperationContext()
                                         .getComponentsToBeReplicated().get(0);
-                                long lsnOffset = LSMIndexUtil.getComponentFileLSNOffset(LSMComponentJob.getLSMIndex(),
-                                        diskComponent, filePath);
-                                asterixFileProperties.initialize(filePath, fileSize, nodeId, isLSMComponentFile,
-                                        lsnOffset, remainingFiles == 0);
+                                long lsnOffset = LSMIndexUtil
+                                        .getComponentFileLSNOffset(LSMComponentJob.getLSMIndex(), diskComponent,
+                                                filePath);
+                                asterixFileProperties
+                                        .initialize(filePath, fileSize, nodeId, isLSMComponentFile, lsnOffset,
+                                                remainingFiles == 0);
                             } else {
                                 asterixFileProperties.initialize(filePath, fileSize, nodeId, isLSMComponentFile, -1L,
                                         remainingFiles == 0);
                             }
-                            requestBuffer = ReplicationProtocol.writeFileReplicationRequest(requestBuffer,
-                                    asterixFileProperties, ReplicationProtocol.ReplicationRequestType.REPLICATE_FILE);
+                            requestBuffer = ReplicationProtocol
+                                    .writeFileReplicationRequest(requestBuffer, asterixFileProperties,
+                                            ReplicationProtocol.ReplicationRequestType.REPLICATE_FILE);
 
-                            Iterator<Map.Entry<String, SocketChannel>> iterator =
-                                    replicasSockets.entrySet().iterator();
+                            Iterator<Map.Entry<String, SocketChannel>> iterator = replicasSockets.entrySet().iterator();
                             while (iterator.hasNext()) {
                                 Map.Entry<String, SocketChannel> entry = iterator.next();
                                 //if the remote replica is not interested in this partition, skip it.
@@ -374,8 +501,8 @@ public class StreamingReplicationManager extends AbstractReplicationManager {
                                     NetworkingUtil.transferBufferToChannel(socketChannel, requestBuffer);
                                     NetworkingUtil.sendFile(fileChannel, socketChannel);
                                     if (asterixFileProperties.requiresAck()) {
-                                        ReplicationProtocol.ReplicationRequestType responseType =
-                                                waitForResponse(socketChannel, responseBuffer);
+                                        ReplicationProtocol.ReplicationRequestType responseType = waitForResponse(
+                                                socketChannel, responseBuffer);
                                         if (responseType != ReplicationProtocol.ReplicationRequestType.ACK) {
                                             throw new IOException(
                                                     "Could not receive ACK from replica " + entry.getKey());
@@ -393,8 +520,8 @@ public class StreamingReplicationManager extends AbstractReplicationManager {
                 } else if (job.getOperation() == IReplicationJob.ReplicationOperation.DELETE) {
                     for (String filePath : job.getJobFiles()) {
                         remainingFiles--;
-                        asterixFileProperties.initialize(filePath, -1, nodeId, isLSMComponentFile, -1L,
-                                remainingFiles == 0);
+                        asterixFileProperties
+                                .initialize(filePath, -1, nodeId, isLSMComponentFile, -1L, remainingFiles == 0);
                         ReplicationProtocol.writeFileReplicationRequest(requestBuffer, asterixFileProperties,
                                 ReplicationProtocol.ReplicationRequestType.DELETE_FILE);
 
@@ -442,10 +569,8 @@ public class StreamingReplicationManager extends AbstractReplicationManager {
     /**
      * Waits and reads a response from a remote replica
      *
-     * @param socketChannel
-     *            The socket to read the response from
-     * @param responseBuffer
-     *            The response buffer to read the response to.
+     * @param socketChannel  The socket to read the response from
+     * @param responseBuffer The response buffer to read the response to.
      * @return The response type.
      * @throws IOException
      */
@@ -458,17 +583,16 @@ public class StreamingReplicationManager extends AbstractReplicationManager {
         }
 
         //read response from remote replicas
-        ReplicationProtocol.ReplicationRequestType responseFunction = ReplicationProtocol.getRequestType(socketChannel, responseBuffer);
+        ReplicationProtocol.ReplicationRequestType responseFunction = ReplicationProtocol
+                .getRequestType(socketChannel, responseBuffer);
         return responseFunction;
     }
 
-    @Override
-    public boolean isReplicationEnabled() {
+    @Override public boolean isReplicationEnabled() {
         return replicationProperties.isParticipant(nodeId);
     }
 
-    @Override
-    public synchronized void updateReplicaInfo(Replica replicaNode) {
+    @Override public synchronized void updateReplicaInfo(Replica replicaNode) {
         Replica replica = replicas.get(replicaNode.getNode().getId());
         //should not update the info of an active replica
         if (replica.getState() == Replica.ReplicaState.ACTIVE) {
@@ -480,8 +604,7 @@ public class StreamingReplicationManager extends AbstractReplicationManager {
     /**
      * Suspends processing replication jobs/logs.
      *
-     * @param force
-     *            a flag indicates if replication should be suspended right away or when the pending jobs are completed.
+     * @param force a flag indicates if replication should be suspended right away or when the pending jobs are completed.
      */
     private void suspendReplication(boolean force) {
         //suspend replication jobs processing
@@ -519,8 +642,8 @@ public class StreamingReplicationManager extends AbstractReplicationManager {
         //start a listener thread per connection
         for (Map.Entry<String, SocketChannel> entry : activeRemoteReplicasSockets.entrySet()) {
             logsRepSockets[i] = entry.getValue();
-            replicationListenerThreads
-                    .execute(new StreamingReplicationManager.TxnLogsReplicationResponseListener(entry.getKey(), entry.getValue()));
+            replicationListenerThreads.execute(
+                    new StreamingReplicationManager.TxnLogsReplicationResponseListener(entry.getKey(), entry.getValue()));
             i++;
         }
 
@@ -603,8 +726,8 @@ public class StreamingReplicationManager extends AbstractReplicationManager {
                         long waitDuration = System.currentTimeMillis() - waitStartTime;
                         if (waitDuration > MAX_JOB_COMMIT_ACK_WAIT) {
                             LOGGER.log(Level.SEVERE,
-                                    "Timeout before receving all job ACKs from replicas. Pending jobs ("
-                                            + jobCommitAcks.keySet().toString() + ")");
+                                    "Timeout before receving all job ACKs from replicas. Pending jobs (" + jobCommitAcks
+                                            .keySet().toString() + ")");
                             break;
                         }
                     }
@@ -656,10 +779,8 @@ public class StreamingReplicationManager extends AbstractReplicationManager {
     /**
      * Sends a request to remote replicas
      *
-     * @param replicaSockets
-     *            The sockets to send the request to.
-     * @param requestBuffer
-     *            The buffer that contains the request.
+     * @param replicaSockets The sockets to send the request to.
+     * @param requestBuffer  The buffer that contains the request.
      */
     private void sendRequest(Map<String, SocketChannel> replicaSockets, ByteBuffer requestBuffer) {
         Iterator<Map.Entry<String, SocketChannel>> iterator = replicaSockets.entrySet().iterator();
@@ -701,8 +822,7 @@ public class StreamingReplicationManager extends AbstractReplicationManager {
         }
     }
 
-    @Override
-    public void initializeReplicasState() {
+    @Override public void initializeReplicasState() {
         for (Replica replica : replicas.values()) {
             checkReplicaState(replica.getNode().getId(), false, false);
         }
@@ -711,12 +831,9 @@ public class StreamingReplicationManager extends AbstractReplicationManager {
     /**
      * Checks the state of a remote replica by trying to ping it.
      *
-     * @param replicaId
-     *            The replica to check the state for.
-     * @param async
-     *            a flag indicating whether to wait for the result or not.
-     * @param suspendReplication
-     *            a flag indicating whether to suspend replication on replica state change or not.
+     * @param replicaId          The replica to check the state for.
+     * @param async              a flag indicating whether to wait for the result or not.
+     * @param suspendReplication a flag indicating whether to suspend replication on replica state change or not.
      */
     private void checkReplicaState(String replicaId, boolean async, boolean suspendReplication) {
         Replica replica = replicas.get(replicaId);
@@ -740,12 +857,9 @@ public class StreamingReplicationManager extends AbstractReplicationManager {
     /**
      * Updates the state of a remote replica.
      *
-     * @param replicaId
-     *            The replica id to update.
-     * @param newState
-     *            The new state of the replica.
-     * @param suspendReplication
-     *            a flag indicating whether to suspend replication on state change or not.
+     * @param replicaId          The replica id to update.
+     * @param newState           The new state of the replica.
+     * @param suspendReplication a flag indicating whether to suspend replication on state change or not.
      * @throws InterruptedException
      */
     public synchronized void updateReplicaState(String replicaId, Replica.ReplicaState newState, boolean suspendReplication)
@@ -781,8 +895,8 @@ public class StreamingReplicationManager extends AbstractReplicationManager {
             replicationFactor--;
         }
 
-        LOGGER.log(Level.WARNING, "Replica " + replicaId + " state changed to: " + newState.name()
-                + ". Replication factor changed to: " + replicationFactor);
+        LOGGER.log(Level.WARNING,
+                "Replica " + replicaId + " state changed to: " + newState.name() + ". Replication factor changed to: " + replicationFactor);
 
         if (suspendReplication) {
             startReplicationThreads();
@@ -793,8 +907,7 @@ public class StreamingReplicationManager extends AbstractReplicationManager {
      * When an ACK for a JOB_COMMIT is received, it is added to the corresponding job.
      *
      * @param jobId
-     * @param replicaId
-     *            The remote replica id the ACK received from.
+     * @param replicaId The remote replica id the ACK received from.
      */
     private void addAckToJob(int jobId, String replicaId) {
         synchronized (jobCommitAcks) {
@@ -811,8 +924,7 @@ public class StreamingReplicationManager extends AbstractReplicationManager {
 
             //if got ACKs from all remote replicas, notify pending jobs if any
 
-            if (jobCommitAcks.get(jobId).size() == replicationFactor
-                    && replicationJobsPendingAcks.containsKey(jobId)) {
+            if (jobCommitAcks.get(jobId).size() == replicationFactor && replicationJobsPendingAcks.containsKey(jobId)) {
                 ILogRecord pendingLog = replicationJobsPendingAcks.get(jobId);
                 synchronized (pendingLog) {
                     pendingLog.notifyAll();
@@ -821,8 +933,7 @@ public class StreamingReplicationManager extends AbstractReplicationManager {
         }
     }
 
-    @Override
-    public boolean hasBeenReplicated(ILogRecord logRecord) {
+    @Override public boolean hasBeenReplicated(ILogRecord logRecord) {
         int jobId = logRecord.getJobId();
         if (jobCommitAcks.containsKey(jobId)) {
             synchronized (jobCommitAcks) {
@@ -869,8 +980,7 @@ public class StreamingReplicationManager extends AbstractReplicationManager {
     /**
      * Establishes a connection with a remote replica.
      *
-     * @param replicaId
-     *            The replica to connect to.
+     * @param replicaId The replica to connect to.
      * @return The socket of the remote replica
      * @throws IOException
      */
@@ -883,8 +993,7 @@ public class StreamingReplicationManager extends AbstractReplicationManager {
         return sc;
     }
 
-    @Override
-    public Set<String> getDeadReplicasIds() {
+    @Override public Set<String> getDeadReplicasIds() {
         Set<String> replicasIds = new HashSet<>();
         for (Replica replica : replicas.values()) {
             if (replica.getState() == Replica.ReplicaState.DEAD) {
@@ -894,8 +1003,7 @@ public class StreamingReplicationManager extends AbstractReplicationManager {
         return replicasIds;
     }
 
-    @Override
-    public Set<String> getActiveReplicasIds() {
+    @Override public Set<String> getActiveReplicasIds() {
         Set<String> replicasIds = new HashSet<>();
         for (Replica replica : replicas.values()) {
             if (replica.getState() == Replica.ReplicaState.ACTIVE) {
@@ -905,18 +1013,15 @@ public class StreamingReplicationManager extends AbstractReplicationManager {
         return replicasIds;
     }
 
-    @Override
-    public int getActiveReplicasCount() {
+    @Override public int getActiveReplicasCount() {
         return getActiveReplicasIds().size();
     }
 
-    @Override
-    public void start() {
+    @Override public void start() {
         //do nothing
     }
 
-    @Override
-    public void dumpState(OutputStream os) throws IOException {
+    @Override public void dumpState(OutputStream os) throws IOException {
         //do nothing
     }
 
@@ -925,8 +1030,7 @@ public class StreamingReplicationManager extends AbstractReplicationManager {
      * and wait for remote replicas shutdown notification then closes the local
      * replication channel.
      */
-    @Override
-    public void stop(boolean dumpState, OutputStream ouputStream) throws IOException {
+    @Override public void stop(boolean dumpState, OutputStream ouputStream) throws IOException {
         //stop replication thread afters all jobs/logs have been processed
         suspendReplication(false);
 
@@ -967,16 +1071,14 @@ public class StreamingReplicationManager extends AbstractReplicationManager {
         LOGGER.log(Level.INFO, "Replication manager stopped.");
     }
 
-    @Override
-    public void reportReplicaEvent(ReplicaEvent event) {
+    @Override public void reportReplicaEvent(ReplicaEvent event) {
         replicaEventsQ.offer(event);
     }
 
     /**
      * Suspends replications and sends a remote replica failure event to ReplicasEventsMonitor.
      *
-     * @param replicaId
-     *            the failed replica id.
+     * @param replicaId the failed replica id.
      */
     public void reportFailedReplica(String replicaId) {
         Replica replica = replicas.get(replicaId);
@@ -1006,8 +1108,7 @@ public class StreamingReplicationManager extends AbstractReplicationManager {
         return null;
     }
 
-    @Override
-    public void startReplicationThreads() throws InterruptedException {
+    @Override public void startReplicationThreads() throws InterruptedException {
         replicationJobsProcessor = new StreamingReplicationManager.ReplicationJobsProccessor();
 
         //start/continue processing jobs/logs
@@ -1034,59 +1135,11 @@ public class StreamingReplicationManager extends AbstractReplicationManager {
 
     @Override
     public void requestFlushLaggingReplicaIndexes(long nonSharpCheckpointTargetLSN) throws IOException {
-        long startLSN = logManager.getAppendLSN();
-        Set<String> replicaIds = getActiveReplicasIds();
-        if (replicaIds.isEmpty()) {
-            return;
-        }
-        ByteBuffer requestBuffer = ByteBuffer.allocate(INITIAL_BUFFER_SIZE);
-        for (String replicaId : replicaIds) {
-            //1. identify replica indexes with LSN less than nonSharpCheckpointTargetLSN.
-            Map<Long, String> laggingIndexes =
-                    replicaResourcesManager.getLaggingReplicaIndexesId2PathMap(replicaId, nonSharpCheckpointTargetLSN);
-
-            if (laggingIndexes.size() > 0) {
-                //2. send request to remote replicas that have lagging indexes.
-                ReplicaIndexFlushRequest laggingIndexesResponse = null;
-                try (SocketChannel socketChannel = getReplicaSocket(replicaId)) {
-                    ReplicaIndexFlushRequest laggingIndexesRequest =
-                            new ReplicaIndexFlushRequest(laggingIndexes.keySet());
-                    requestBuffer =
-                            ReplicationProtocol.writeGetReplicaIndexFlushRequest(requestBuffer, laggingIndexesRequest);
-                    NetworkingUtil.transferBufferToChannel(socketChannel, requestBuffer);
-
-                    //3. remote replicas will respond with indexes that were not flushed.
-                    ReplicationProtocol.ReplicationRequestType responseFunction = waitForResponse(socketChannel, requestBuffer);
-
-                    if (responseFunction == ReplicationProtocol.ReplicationRequestType.FLUSH_INDEX) {
-                        requestBuffer = ReplicationProtocol.readRequest(socketChannel, requestBuffer);
-                        //returning the indexes that were not flushed
-                        laggingIndexesResponse = ReplicationProtocol.readReplicaIndexFlushRequest(requestBuffer);
-                    }
-                    //send goodbye
-                    ReplicationProtocol.sendGoodbye(socketChannel);
-                }
-
-                /**
-                 * 4. update the LSN_MAP for indexes that were not flushed
-                 * to the current append LSN to indicate no operations happened
-                 * since the checkpoint start.
-                 */
-                if (laggingIndexesResponse != null) {
-                    for (Long resouceId : laggingIndexesResponse.getLaggingRescouresIds()) {
-                        String indexPath = laggingIndexes.get(resouceId);
-                        Map<Long, Long> indexLSNMap = replicaResourcesManager.getReplicaIndexLSNMap(indexPath);
-                        indexLSNMap.put(ReplicaResourcesManager.REPLICA_INDEX_CREATION_LSN, startLSN);
-                        replicaResourcesManager.updateReplicaIndexLSNMap(indexPath, indexLSNMap);
-                    }
-                }
-            }
-        }
+        return; // not required for streaming replication.
     }
 
     //Recovery Method
-    @Override
-    public long getMaxRemoteLSN(Set<String> remoteReplicas) throws IOException {
+    @Override public long getMaxRemoteLSN(Set<String> remoteReplicas) throws IOException {
         long maxRemoteLSN = 0;
 
         ReplicationProtocol.writeGetReplicaMaxLSNRequest(dataBuffer);
@@ -1121,8 +1174,7 @@ public class StreamingReplicationManager extends AbstractReplicationManager {
     }
 
     //Recovery Method
-    @Override
-    public void requestReplicaFiles(String selectedReplicaId, Set<Integer> partitionsToRecover,
+    @Override public void requestReplicaFiles(String selectedReplicaId, Set<Integer> partitionsToRecover,
             Set<String> existingFiles) throws IOException {
         ReplicaFilesRequest request = new ReplicaFilesRequest(partitionsToRecover, existingFiles);
         dataBuffer = ReplicationProtocol.writeGetReplicaFilesRequest(dataBuffer, request);
@@ -1134,7 +1186,8 @@ public class StreamingReplicationManager extends AbstractReplicationManager {
 
             String indexPath;
             String destFilePath;
-            ReplicationProtocol.ReplicationRequestType responseFunction = ReplicationProtocol.getRequestType(socketChannel, dataBuffer);
+            ReplicationProtocol.ReplicationRequestType responseFunction = ReplicationProtocol
+                    .getRequestType(socketChannel, dataBuffer);
             LSMIndexFileProperties fileProperties;
             while (responseFunction != ReplicationProtocol.ReplicationRequestType.GOODBYE) {
                 dataBuffer = ReplicationProtocol.readRequest(socketChannel, dataBuffer);
@@ -1151,8 +1204,8 @@ public class StreamingReplicationManager extends AbstractReplicationManager {
 
                 LOGGER.info("Creating file: " + destFile.getPath());
 
-                try (RandomAccessFile fileOutputStream = new RandomAccessFile(destFile, "rw");
-                     FileChannel fileChannel = fileOutputStream.getChannel();) {
+                try (RandomAccessFile fileOutputStream = new RandomAccessFile(destFile,
+                        "rw"); FileChannel fileChannel = fileOutputStream.getChannel();) {
                     fileOutputStream.setLength(fileProperties.getFileSize());
 
                     NetworkingUtil.downloadFile(fileChannel, socketChannel);
@@ -1177,8 +1230,7 @@ public class StreamingReplicationManager extends AbstractReplicationManager {
         return replicationProperties.getLogBufferPageSize();
     }
 
-    @Override
-    public void replicateTxnLogBatch(final ByteBuffer buffer) {
+    @Override public void replicateTxnLogBatch(final ByteBuffer buffer) {
         //if replication is suspended, wait until it is resumed
         try {
             while (replicationSuspended.get()) {
@@ -1213,14 +1265,14 @@ public class StreamingReplicationManager extends AbstractReplicationManager {
     }
 
     //supporting classes
+
     /**
      * This class is responsible for processing replica events.
      */
     private class ReplicasEventsMonitor extends Thread {
         ReplicaEvent event;
 
-        @Override
-        public void run() {
+        @Override public void run() {
             while (true) {
                 try {
                     event = replicaEventsQ.take();
@@ -1274,8 +1326,7 @@ public class StreamingReplicationManager extends AbstractReplicationManager {
         Map<String, SocketChannel> replicaSockets;
         ByteBuffer reusableBuffer = ByteBuffer.allocate(INITIAL_BUFFER_SIZE);
 
-        @Override
-        public void run() {
+        @Override public void run() {
             Thread.currentThread().setName("ReplicationJobsProccessor Thread");
             terminateJobsReplication.set(false);
             jobsReplicationSuspended.set(false);
@@ -1341,13 +1392,11 @@ public class StreamingReplicationManager extends AbstractReplicationManager {
             this.replicaSocket = replicaSocket;
         }
 
-        @Override
-        public void run() {
+        @Override public void run() {
             Thread.currentThread().setName("TxnLogs Replication Listener Thread");
             LOGGER.log(Level.INFO, "Started listening on socket: " + replicaSocket.socket().getRemoteSocketAddress());
 
-            try (BufferedReader incomingResponse =
-                         new BufferedReader(new InputStreamReader(replicaSocket.socket().getInputStream()))) {
+            try (BufferedReader incomingResponse = new BufferedReader(new InputStreamReader(replicaSocket.socket().getInputStream()))) {
                 while (true) {
                     String responseLine = incomingResponse.readLine();
                     if (responseLine == null) {
@@ -1367,4 +1416,115 @@ public class StreamingReplicationManager extends AbstractReplicationManager {
             }
         }
     }
+
+//       private class ReplicationMaterialzationThread implements Runnable {
+//
+//            private final int partition;
+//            private final BlockingQueue<ByteBuffer> jobQ;
+//            private ByteBuffer buffer;
+//            ILogRecord logRecord;
+//            private Object monitor;
+//            private ITransactionSubsystem txnSubSystem;
+//
+//            public ReplicationMaterialzationThread(int partition, BlockingQueue<ByteBuffer> jobQ, ByteBuffer buffer,
+//                    Object monitor) {
+//                this.partition = partition;
+//                this.jobQ = jobQ;
+//                this.monitor = monitor;
+//                this.logRecord = new LogRecord();
+//                this.txnSubSystem = asterixAppRuntimeContextProvider.getTransactionSubsystem();
+//            }
+//
+//            @Override public void run() {
+//                String name = "RMT-" + partition;
+//                Thread.currentThread().setName(name);
+//                while (true) {
+//                    try {
+//                        synchronized (monitor) {
+//                            while (jobQ.isEmpty()) {
+//                                LOGGER.log(Level.INFO, "REPL: " + name + " waiting because jobQ is empty");
+//                                monitor.wait();
+//                                LOGGER.log(Level.INFO, "REPL: " + name + ": Requesting a flush");
+//                                if (!flushWriteBufferToQ(partition)) {
+//                                    LOGGER.log(Level.INFO, "REPL:" + name + ": Flush buffer failed for thread because of empty buffer");
+//                                    continue;
+//                                } else {
+//                                    LOGGER.log(Level.INFO, "REPL: " + name + ": Successful buffer switch");
+//                                    break;
+//                                }
+//                            }
+//                        }
+//                        buffer = jobQ.take();
+//                        int counter = 0;
+//                        Instant start = Instant.now();
+//                        while (buffer.hasRemaining()) {
+//                            logRecord.readRemoteLog(buffer);
+//                            counter++;
+//                            LOGGER.log(Level.INFO, "REPL: " + name + " : read log record " + logRecord.getLogRecordForDisplay());
+//                            try {
+//                                materialize();
+//                            } catch (Exception e) {
+//                                LOGGER.log(Level.INFO, "REPL FAILED: " + name + " " + logRecord.getLogRecordForDisplay());
+//                            }
+//                        }
+//                        Instant end = Instant.now();
+//                        LOGGER.log(Level.INFO,
+//                                "REPL: STATS: " + name + " Num Logs in prev buffer: " + counter + " JOBQ " + "has" + jobQ.size() + " buffers waiting! and time to complete " + Duration
+//                                        .between(start, end).toMillis());
+//                        buffer.clear();
+//                        emptyReplicationLogBufferQ.offer(buffer);
+//                    } catch (InterruptedException e) {
+//                        e.printStackTrace();
+//                    }
+//                }
+//            }
+//
+//            private void materialize() {
+//                long resourceId = logRecord.getResourceId();
+//                if (logRecord.getLogType() == LogType.UPDATE) {
+//                    try {
+//                        LocalResource localResource = resourceMap.get(resourceId);
+//                        if (localResource == null) {
+//                            synchronized (resourceMapLock) {
+//                                localResource = resourceMap.get(resourceId);
+//                                if (localResource == null) {
+//                                    LOGGER.log(Level.INFO,
+//                                            "Local resource " + resourceId + " not found!, refreshing the local " + "resource repository.");
+//                                    refreshLocalResourceMap();
+//                                    localResource = resourceMap.get(resourceId);
+//                                }
+//                            }
+//                        }
+//                        Resource localResourceMetadata = (Resource) localResource.getResource();
+//                        ILSMIndex index = (ILSMIndex) asterixAppRuntimeContextProvider.getDatasetLifecycleManager().get(localResource.getPath
+//                                ());
+//                        if (index == null) {
+//                            index = localResourceMetadata
+//                                    .createIndexInstance(txnSubSystem.getServiceContext(), localResource);
+//                            asterixAppRuntimeContextProvider.getDatasetLifecycleManager().register(localResource.getPath(), index);
+//                            asterixAppRuntimeContextProvider.getDatasetLifecycleManager().open(localResource.getPath());
+//                        }
+//                        LOGGER.log(Level.INFO, "REPL: " + Thread.currentThread().getName() + " Redoing " + logRecord
+//                                .getLogRecordForDisplay());
+//
+//                        ILSMIndexAccessor indexAccessor = index
+//                                .createAccessor(NoOpOperationCallback.INSTANCE, NoOpOperationCallback.INSTANCE);
+//
+//                        if (logRecord.getNewOp() == IndexOperation.INSERT.ordinal()) {
+//                            indexAccessor.insert(logRecord.getNewValue()); // TODO: Changed from forceInsert to insert.
+//                        } else if (logRecord.getNewOp() == IndexOperation.DELETE.ordinal()) {
+//                            indexAccessor.delete(logRecord.getNewValue()); // TODO: Changed from forceDelete to delete.
+//                        } else {
+//                            LOGGER.log(Level.SEVERE, "Unknown Optype to replicate!");
+//                        }
+//                    } catch (HyracksDataException e) {
+//                        LOGGER.log(Level.SEVERE, "REPL: Replicationg a record failed!!!");
+//                        e.printStackTrace();
+//                    } catch (IndexException e) {
+//                        // TODO: change this to a catch all exception?
+//                        e.printStackTrace();
+//                    }
+//                }
+//            }
+//        }
 }

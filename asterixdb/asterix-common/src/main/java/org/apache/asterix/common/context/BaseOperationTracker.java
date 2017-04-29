@@ -60,4 +60,8 @@ public class BaseOperationTracker implements ILSMOperationTracker {
 
     public void exclusiveJobCommitted() throws HyracksDataException {
     }
+
+    public DatasetInfo getDatasetInfo(){
+        return dsInfo;
+    }
 }

@@ -420,7 +420,6 @@ public class PersistentLocalResourceRepository implements ILocalResourceReposito
     }
 
     /**
-     * @param mountPoint
      * @param nodeId
      * @param ioDeviceId
      * @return A file reference to the storage metadata file.
@@ -432,7 +431,6 @@ public class PersistentLocalResourceRepository implements ILocalResourceReposito
     }
 
     /**
-     * @param mountPoint
      * @param nodeId
      * @param ioDeviceId
      * @return A file reference to the storage root directory if exists, otherwise null.

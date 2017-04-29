@@ -157,6 +157,7 @@ public class ReplicaResourcesManager implements IReplicaResourcesManager {
     }
 
     public Map<Long, String> getLaggingReplicaIndexesId2PathMap(String replicaId, long targetLSN) throws IOException {
+        LOGGER.info("Get lagging replica indexes 2 path map: " + replicaId + " target: " + targetLSN);
         Map<Long, String> laggingReplicaIndexes = new HashMap<Long, String>();
         try {
             //for every index in replica

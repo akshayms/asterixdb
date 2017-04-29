@@ -103,7 +103,34 @@ public class DatasetResource implements Comparable<DatasetResource> {
             throw new HyracksDataException("Attempt to register a null index");
         }
         datasetInfo.getIndexes().put(resourceID,
-                new IndexInfo((ILSMIndex) index, datasetInfo.getDatasetID(), resourceID));
+                new IndexInfo((ILSMIndex) index, datasetInfo.getDatasetID(), resourceID, false));
+    }
+
+    public void register(long resourceID, IIndex index, boolean isInactiveReplicaIndex) throws HyracksDataException {
+        if (!isInactiveReplicaIndex) {
+            register(resourceID, index);
+            return;
+        } else {
+            if (!datasetInfo.isRegistered()) {
+                synchronized (datasetInfo) {
+                    if (!datasetInfo.isRegistered()) {
+                        datasetInfo.setExternal(!index.hasMemoryComponents());
+                        datasetInfo.setRegistered(true);
+                        datasetInfo.setDurable(false);
+                    }
+                }
+            }
+
+            if (datasetInfo.getIndexes().containsKey(resourceID)) {
+                throw new HyracksDataException("Index with resource ID " + resourceID + " already exists.");
+            }
+
+            if (index == null) {
+                throw new HyracksDataException("Attempt to register a null index");
+            }
+            datasetInfo.getIndexes().put(resourceID,
+                    new IndexInfo((ILSMIndex) index, datasetInfo.getDatasetID(), resourceID, true));
+        }
     }
 
     public DatasetInfo getDatasetInfo() {

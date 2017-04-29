@@ -25,6 +25,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.logging.Logger;
 
 import org.apache.asterix.common.api.IDatasetLifecycleManager;
 import org.apache.asterix.common.config.StorageProperties;
@@ -48,6 +49,7 @@ import org.apache.hyracks.storage.common.file.ILocalResourceRepository;
 import org.apache.hyracks.storage.common.file.LocalResource;
 
 public class DatasetLifecycleManager implements IDatasetLifecycleManager, ILifeCycleComponent {
+    private static final Logger LOGGER = Logger.getLogger(DatasetLifecycleManager.class.getName());
     private final Map<Integer, DatasetResource> datasets = new ConcurrentHashMap<>();
     private final StorageProperties storageProperties;
     private final ILocalResourceRepository resourceRepository;
@@ -100,6 +102,20 @@ public class DatasetLifecycleManager implements IDatasetLifecycleManager, ILifeC
             datasetResource = getDatasetLifecycle(did);
         }
         datasetResource.register(resourceID, index);
+    }
+
+    @Override
+    public void register(String resourcePath, IIndex index, boolean isInActiveReplicaIndex)
+            throws HyracksDataException {
+        validateDatasetLifecycleManagerState();
+        int did = getDIDfromResourcePath(resourcePath);
+        long resourceID = getResourceIDfromResourcePath(resourcePath);
+        DatasetResource datasetResource = datasets.get(did);
+        if (datasetResource == null) {
+            datasetResource = getDatasetLifecycle(did);
+        }
+        datasetResource.register(resourceID, index, isInActiveReplicaIndex);
+
     }
 
     public int getDIDfromResourcePath(String resourcePath) throws HyracksDataException {
@@ -417,6 +433,7 @@ public class DatasetLifecycleManager implements IDatasetLifecycleManager, ILifeC
                 // TODO: This is not efficient since we flush the indexes sequentially.
                 // Think of a way to allow submitting the flush requests concurrently. We don't do them concurrently because this
                 // may lead to a deadlock scenario between the DatasetLifeCycleManager and the PrimaryIndexOperationTracker.
+                LOGGER.info("Waiting for flush to finish for index: " + iInfo);
                 flushAndWaitForIO(dsInfo, iInfo);
             }
         }

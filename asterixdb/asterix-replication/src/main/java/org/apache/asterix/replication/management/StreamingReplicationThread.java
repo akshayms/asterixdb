@@ -1,327 +1,402 @@
 package org.apache.asterix.replication.management;
 
-import org.apache.asterix.common.api.IAppRuntimeContext;
 import org.apache.asterix.common.api.IDatasetLifecycleManager;
-import org.apache.asterix.common.config.MetadataProperties;
+import org.apache.asterix.common.cluster.ClusterPartition;
+import org.apache.asterix.common.config.IPropertiesProvider;
+import org.apache.asterix.common.context.IndexInfo;
 import org.apache.asterix.common.exceptions.ACIDException;
+import org.apache.asterix.common.ioopcallbacks.AbstractLSMIOOperationCallback;
 import org.apache.asterix.common.replication.IReplicationChannel;
+import org.apache.asterix.common.replication.IReplicationStrategy;
 import org.apache.asterix.common.replication.IReplicationThread;
-import org.apache.asterix.common.transactions.*;
+import org.apache.asterix.common.replication.ReplicaEvent;
+import org.apache.asterix.common.storage.IndexFileProperties;
+import org.apache.asterix.common.transactions.LogRecord;
+import org.apache.asterix.common.transactions.LogSource;
+import org.apache.asterix.common.transactions.LogType;
+import org.apache.asterix.common.utils.StoragePathUtil;
+import org.apache.asterix.common.utils.TransactionUtil;
+import org.apache.asterix.replication.functions.ReplicaFilesRequest;
+import org.apache.asterix.replication.functions.ReplicaIndexFlushRequest;
 import org.apache.asterix.replication.functions.ReplicationProtocol;
-import org.apache.asterix.transaction.management.resource.PersistentLocalResourceRepository;
-import org.apache.hyracks.api.exceptions.HyracksDataException;
-import org.apache.hyracks.storage.am.common.api.IndexException;
-import org.apache.hyracks.storage.am.common.impls.NoOpOperationCallback;
-import org.apache.hyracks.storage.am.common.ophelpers.IndexOperation;
-import org.apache.hyracks.storage.am.lsm.common.api.ILSMIndex;
-import org.apache.hyracks.storage.am.lsm.common.api.ILSMIndexAccessor;
-import org.apache.hyracks.storage.common.file.ILocalResourceRepository;
-import org.apache.hyracks.storage.common.file.LocalResource;
+import org.apache.asterix.replication.logging.RemoteLogMapping;
+import org.apache.asterix.replication.storage.LSMComponentLSNSyncTask;
+import org.apache.asterix.replication.storage.LSMComponentProperties;
+import org.apache.asterix.replication.storage.LSMIndexFileProperties;
+import org.apache.hyracks.storage.am.lsm.common.impls.AbstractLSMIndex;
+import org.apache.hyracks.util.StorageUtil;
 
+import java.io.File;
 import java.io.IOException;
-import java.net.Socket;
+import java.io.RandomAccessFile;
 import java.nio.ByteBuffer;
+import java.nio.channels.FileChannel;
 import java.nio.channels.SocketChannel;
-import java.time.Duration;
-import java.time.Instant;
-import java.util.ArrayList;
+import java.nio.file.Files;
+import java.nio.file.Paths;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.*;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
 /**
- * Created by msa on 3/24/17.
+ * Created by msa on 4/28/17.
  */
 public class StreamingReplicationThread implements IReplicationThread {
+    private static final Logger LOGGER = Logger.getLogger(PassiveReplicationThread.class.getName());
+    private static final int INTIAL_BUFFER_SIZE = StorageUtil.getIntSizeInBytes(4, StorageUtil.StorageUnit.KILOBYTE);
+    private static final int LOG_REPLICATION_END_HANKSHAKE_LOG_SIZE = 1;
 
-    private static final Logger LOGGER = Logger.getLogger(StreamingReplicationManager.class.getName());
-    private final Map<Integer, BlockingQueue<ByteBuffer>> partitionReplicationQs;
-    private final Map<Integer, ByteBuffer> partitionWriteBuffer;
-    // TODO: Change to a single bytebuffer list per partition.
-    private final BlockingQueue<ByteBuffer> freeBufferQ;
-    private final ITransactionSubsystem txnSubSystem;
-    private Set<Integer> nodePartitions;
-    private int numPartitions;
-    private boolean replicationEnabled = true;
-    private List<Object> partitionMonitors;
+    private final SocketChannel socketChannel;
+    private final LogRecord remoteLog;
+    private ByteBuffer inBuffer;
+    private ByteBuffer outBuffer;
+    private StreamingReplicationChannel replicationChannel;
 
-    private static final int DEFAULT_SIZE = 20;
-    private static final int DEFAULT_LOG_PAGE_SIZE = 15000;
-    private static final int MAX_QUEUE_LENGTH = 15;
-    private Object monitor = new Object();
-    private final int ACTIVE_LOG_INDEX = 0;
-    private final int INACTIVE_LOG_INDEX = 1;
-
-    private final ILocalResourceRepository localResourceRepository;
-    private final IDatasetLifecycleManager datasetLifecycleManager;
-    //private final List<AtomicInteger> counters;
-    private final Object bufferFlipMonitor = new Object();
-
-    private Map<Long, LocalResource> resourceMap;
-    private Map<Integer, Set<Integer>> jobResourcesMap;
-    private static final Object resourceMapLock = new Object();
-
-    //public StreamingReplicationManager(ITransactionSubsystem txnSubSystem, IAppRuntimeContextProvider
-    //asterixAppRuntimeContextProvider, MetadataProperties metadataProperties)
-    public StreamingReplicationThread(IAppRuntimeContextProvider appRuntimeContextProvider) {
-    //public StreamingReplicationThread(IReplicationChannel replicationChannel, SocketChannel socketChannel) {
-        this.partitionReplicationQs = new ConcurrentHashMap<>();
-        this.txnSubSystem = appRuntimeContextProvider.getTransactionSubsystem();
-        this.nodePartitions = appRuntimeContextProvider.getAppContext().getMetadataProperties().getClusterPartitions()
-                .keySet();
-        this.numPartitions = nodePartitions.size();
-        this.partitionWriteBuffer = new ConcurrentHashMap<>();
-        this.partitionMonitors = new ArrayList<>();
-        this.freeBufferQ = new LinkedBlockingQueue<>();
-        this.localResourceRepository = txnSubSystem
-                .getAsterixAppRuntimeContextProvider().getLocalResourceRepository();
-        //this.nodePartitions = ((PersistentLocalResourceRepository) localResourceRepository).getInactivePartitions();
-        nodePartitions.stream().forEach(partitionId -> {
-            // 3 buffers to start out with per partition on average.
-            freeBufferQ.offer(ByteBuffer.allocate(DEFAULT_LOG_PAGE_SIZE));
-            freeBufferQ.offer(ByteBuffer.allocate(DEFAULT_LOG_PAGE_SIZE));
-            partitionWriteBuffer.put(partitionId, ByteBuffer.allocate(DEFAULT_LOG_PAGE_SIZE));
-            partitionReplicationQs.put(partitionId, new LinkedBlockingQueue<>(MAX_QUEUE_LENGTH));
-            partitionMonitors.add(new Object());
-        });
-        freeBufferQ.offer(ByteBuffer.allocate(DEFAULT_LOG_PAGE_SIZE));
-        freeBufferQ.offer(ByteBuffer.allocate(DEFAULT_LOG_PAGE_SIZE));
-        freeBufferQ.offer(ByteBuffer.allocate(DEFAULT_LOG_PAGE_SIZE));
-        freeBufferQ.offer(ByteBuffer.allocate(DEFAULT_LOG_PAGE_SIZE));
-        freeBufferQ.offer(ByteBuffer.allocate(DEFAULT_LOG_PAGE_SIZE));
-        freeBufferQ.offer(ByteBuffer.allocate(DEFAULT_LOG_PAGE_SIZE));
-
-        this.datasetLifecycleManager = appRuntimeContextProvider.getDatasetLifecycleManager();
-        startThreads();
-        LOGGER.log(Level.INFO, "REPL: Streaming replication initialized!");
-        try {
-            refreshLocalResourceMap();
-        } catch (HyracksDataException e) {
-            e.printStackTrace();
-        }
-        //this.counters = new ArrayList<>(numPartitions);
+    public StreamingReplicationThread(StreamingReplicationChannel replicationChannel, SocketChannel socketChannel) {
+        this.socketChannel = socketChannel;
+        this.replicationChannel = replicationChannel;
+        inBuffer = ByteBuffer.allocate(INTIAL_BUFFER_SIZE);
+        outBuffer = ByteBuffer.allocate(INTIAL_BUFFER_SIZE);
+        remoteLog = new LogRecord();
     }
 
     @Override
     public void run() {
         Thread.currentThread().setName("Streaming Replication Thread");
+        try {
+            ReplicationProtocol.ReplicationRequestType replicationFunction = ReplicationProtocol.getRequestType(socketChannel,
+                    inBuffer);
+            while (replicationFunction != ReplicationProtocol.ReplicationRequestType.GOODBYE) {
+                switch (replicationFunction) {
+                    case REPLICATE_LOG:
+                        handleLogReplication();
+                        break;
+                    case LSM_COMPONENT_PROPERTIES:
+                        handleLSMComponentProperties();
+                        break;
+                    case REPLICATE_FILE:
+                        handleReplicateFile();
+                        break;
+                    case DELETE_FILE:
+                        handleDeleteFile();
+                        break;
+                    case REPLICA_EVENT:
+                        handleReplicaEvent();
+                        break;
+                    case GET_REPLICA_MAX_LSN:
+                        handleGetReplicaMaxLSN();
+                        break;
+                    case GET_REPLICA_FILES:
+                        handleGetReplicaFiles();
+                        break;
+                    case FLUSH_INDEX:
+                        handleFlushIndex();
+                        break;
+                    case CREATE_INDEX:
+                        handleIndexCreate();
+                        break;
+                    default:
+                        throw new IllegalStateException("Unknown replication request");
+                }
+                replicationFunction = ReplicationProtocol.getRequestType(socketChannel, inBuffer);
+            }
+        } catch (Exception e) {
+            if (LOGGER.isLoggable(Level.WARNING)) {
+                LOGGER.log(Level.WARNING, "Unexpectedly error during replication.", e);
+            }
+        } finally {
+            if (socketChannel.isOpen()) {
+                try {
+                    socketChannel.close();
+                } catch (IOException e) {
+                    if (LOGGER.isLoggable(Level.WARNING)) {
+                        LOGGER.log(Level.WARNING, "Filed to close replication socket.", e);
+                    }
+                }
+            }
+        }
+    }
+
+    private void handleIndexCreate() throws IOException {
+        inBuffer = ReplicationProtocol.readRequest(socketChannel, inBuffer);
+        LSMIndexFileProperties asterixFileProperties = ReplicationProtocol.readFileReplicationRequest(inBuffer);
+
+        String indexPath = replicationChannel.replicaResourcesManager.getIndexPath
+                (asterixFileProperties);
+        String replicaFilePath = indexPath + File.separator + asterixFileProperties.getFileName();
+        LOGGER.info("Creating replica file: " + replicaFilePath);
+        File destFile = new File(replicaFilePath);
+        destFile.createNewFile();
+        long fileSize = asterixFileProperties.getFileSize();
+
+        RandomAccessFile fileOutputStream = new RandomAccessFile(destFile, "rw");
+        FileChannel fileChannel = fileOutputStream.getChannel();
+        fileOutputStream.setLength(fileSize);
+        LOGGER.info("Downlading File : " + destFile + " with size: " + fileSize);
+        NetworkingUtil.downloadFile(fileChannel, socketChannel);
+        fileChannel.force(true);
+        if (asterixFileProperties.requiresAck()) {
+            ReplicationProtocol.sendAck(socketChannel);
+        }
+    }
+
+    private void handleFlushIndex() throws IOException {
+        inBuffer = ReplicationProtocol.readRequest(socketChannel, inBuffer);
+        //read which indexes are requested to be flushed from remote replica
+        ReplicaIndexFlushRequest request = ReplicationProtocol.readReplicaIndexFlushRequest(inBuffer);
+        Set<Long> requestedIndexesToBeFlushed = request.getLaggingRescouresIds();
+
+        /**
+         * check which indexes can be flushed (open indexes) and which cannot be
+         * flushed (closed or have empty memory component).
+         */
+        IDatasetLifecycleManager datasetLifeCycleManager = replicationChannel.getAppRuntimeContextProvider()
+                .getDatasetLifecycleManager();
+        List<IndexInfo> openIndexesInfo = datasetLifeCycleManager.getOpenIndexesInfo();
+        Set<Integer> datasetsToForceFlush = new HashSet<>();
+        for (IndexInfo iInfo : openIndexesInfo) {
+            if (requestedIndexesToBeFlushed.contains(iInfo.getResourceId())) {
+                AbstractLSMIOOperationCallback ioCallback = (AbstractLSMIOOperationCallback) iInfo.getIndex()
+                        .getIOOperationCallback();
+                //if an index has a pending flush, then the request to flush it will succeed.
+                if (ioCallback.hasPendingFlush()) {
+                    //remove index to indicate that it will be flushed
+                    requestedIndexesToBeFlushed.remove(iInfo.getResourceId());
+                } else if (!((AbstractLSMIndex) iInfo.getIndex()).isCurrentMutableComponentEmpty()) {
+                    /**
+                     * if an index has something to be flushed, then the request to flush it
+                     * will succeed and we need to schedule it to be flushed.
+                     */
+                    datasetsToForceFlush.add(iInfo.getDatasetId());
+                    //remove index to indicate that it will be flushed
+                    requestedIndexesToBeFlushed.remove(iInfo.getResourceId());
+                }
+            }
+        }
+
+        //schedule flush for datasets requested to be flushed
+        for (int datasetId : datasetsToForceFlush) {
+            datasetLifeCycleManager.flushDataset(datasetId, true);
+        }
+
+        //the remaining indexes in the requested set are those which cannot be flushed.
+        //respond back to the requester that those indexes cannot be flushed
+        ReplicaIndexFlushRequest laggingIndexesResponse = new ReplicaIndexFlushRequest(requestedIndexesToBeFlushed);
+        outBuffer = ReplicationProtocol.writeGetReplicaIndexFlushRequest(outBuffer, laggingIndexesResponse);
+        NetworkingUtil.transferBufferToChannel(socketChannel, outBuffer);
+    }
+
+    private void handleLSMComponentProperties() throws IOException {
+        inBuffer = ReplicationProtocol.readRequest(socketChannel, inBuffer);
+        LSMComponentProperties lsmCompProp = ReplicationProtocol.readLSMPropertiesRequest(inBuffer);
+        //create mask to indicate that this component is not valid yet
+        replicationChannel.replicaResourcesManager.createRemoteLSMComponentMask(lsmCompProp);
+        replicationChannel.lsmComponentId2PropertiesMap.put(lsmCompProp.getComponentId(),
+                lsmCompProp);
+    }
+
+    private void handleReplicateFile() throws IOException {
+        inBuffer = ReplicationProtocol.readRequest(socketChannel, inBuffer);
+        LSMIndexFileProperties afp = ReplicationProtocol.readFileReplicationRequest(inBuffer);
+
+        //get index path
+        String indexPath = replicationChannel.replicaResourcesManager.getIndexPath(afp);
+        String replicaFilePath = indexPath + File.separator + afp.getFileName();
+
+        //create file
+        File destFile = new File(replicaFilePath);
+        destFile.createNewFile();
+
+        try (RandomAccessFile fileOutputStream = new RandomAccessFile(destFile, "rw");
+             FileChannel fileChannel = fileOutputStream.getChannel()) {
+            fileOutputStream.setLength(afp.getFileSize());
+            NetworkingUtil.downloadFile(fileChannel, socketChannel);
+            fileChannel.force(true);
+
+            if (afp.requiresAck()) {
+                ReplicationProtocol.sendAck(socketChannel);
+            }
+            if (afp.isLSMComponentFile()) {
+                String componentId = LSMComponentProperties.getLSMComponentID(afp.getFilePath());
+                if (afp.getLSNByteOffset() > AbstractLSMIOOperationCallback.INVALID) {
+                    LSMComponentLSNSyncTask syncTask = new LSMComponentLSNSyncTask(componentId,
+                            destFile.getAbsolutePath(), afp.getLSNByteOffset());
+                    replicationChannel.lsmComponentRemoteLSN2LocalLSNMappingTaskQ.offer(syncTask);
+                } else {
+                    replicationChannel.updateLSMComponentRemainingFiles(componentId);
+                }
+            } else {
+                //index metadata file
+                replicationChannel.replicaResourcesManager.initializeReplicaIndexLSNMap(indexPath, replicationChannel
+                        .getLogManager()
+                        .getAppendLSN());
+            }
+        }
+    }
+
+    private void handleGetReplicaMaxLSN() throws IOException {
+        long maxLNS = replicationChannel.getLogManager().getAppendLSN();
+        outBuffer.clear();
+        outBuffer.putLong(maxLNS);
+        outBuffer.flip();
+        NetworkingUtil.transferBufferToChannel(socketChannel, outBuffer);
+    }
+
+    private void handleGetReplicaFiles() throws IOException {
+        inBuffer = ReplicationProtocol.readRequest(socketChannel, inBuffer);
+        ReplicaFilesRequest request = ReplicationProtocol.readReplicaFileRequest(inBuffer);
+
+        LOGGER.info("Get replica files request from: " + socketChannel.getRemoteAddress() + " Request: " + request);
+
+        LSMIndexFileProperties fileProperties = new LSMIndexFileProperties();
+
+        List<String> filesList;
+        Set<Integer> partitionIds = request.getPartitionIds();
+        Set<String> requesterExistingFiles = request.getExistingFiles();
+        Map<Integer, ClusterPartition> clusterPartitions = ((IPropertiesProvider) replicationChannel.
+                appContextProvider
+                .getAppContext()).getMetadataProperties().getClusterPartitions();
+
+        final IReplicationStrategy repStrategy = replicationChannel.replicationProperties.getReplicationStrategy();
+        // Flush replicated datasets to generate the latest LSM components
+        replicationChannel.dsLifecycleManager.flushDataset(repStrategy);
+        for (Integer partitionId : partitionIds) {
+            ClusterPartition partition = clusterPartitions.get(partitionId);
+            filesList = replicationChannel.replicaResourcesManager.getPartitionIndexesFiles(partition.getPartitionId
+                    (), false);
+            //start sending files
+            for (String filePath : filesList) {
+                // Send only files of datasets that are replciated.
+
+                if (Files.isDirectory(Paths.get(filePath))) {
+                    LOGGER.info("Not a regular file! " + filePath);
+                    continue;
+                }
+
+                IndexFileProperties indexFileRef = replicationChannel.localResourceRep.getIndexFileRef(filePath);
+                if (!repStrategy.isMatchForFailover(indexFileRef.getDatasetId())) {
+                    continue;
+                }
+
+                String relativeFilePath = StoragePathUtil.getIndexFileRelativePath(filePath);
+                //if the file already exists on the requester, skip it
+                if (!requesterExistingFiles.contains(relativeFilePath)) {
+                    try (RandomAccessFile fromFile = new RandomAccessFile(filePath, "r");
+                         FileChannel fileChannel = fromFile.getChannel();) {
+                        long fileSize = fileChannel.size();
+                        fileProperties.initialize(filePath, fileSize, partition.getNodeId(), false,
+                                AbstractLSMIOOperationCallback.INVALID, false);
+                        outBuffer = ReplicationProtocol.writeFileReplicationRequest(outBuffer, fileProperties,
+                                ReplicationProtocol.ReplicationRequestType.REPLICATE_FILE);
+
+                        //send file info
+                        NetworkingUtil.transferBufferToChannel(socketChannel, outBuffer);
+
+                        //transfer file
+                        NetworkingUtil.sendFile(fileChannel, socketChannel);
+                    }
+                }
+            }
+        }
+
+        //send goodbye (end of files)
+        ReplicationProtocol.sendGoodbye(socketChannel);
+    }
+
+    private void handleReplicaEvent() throws IOException {
+        inBuffer = ReplicationProtocol.readRequest(socketChannel, inBuffer);
+        ReplicaEvent event = ReplicationProtocol.readReplicaEventRequest(inBuffer);
+        replicationChannel.replicationManager.reportReplicaEvent(event);
+    }
+
+    private void handleDeleteFile() throws IOException {
+        inBuffer = ReplicationProtocol.readRequest(socketChannel, inBuffer);
+        LSMIndexFileProperties fileProp = ReplicationProtocol.readFileReplicationRequest(inBuffer);
+        replicationChannel.replicaResourcesManager.deleteIndexFile(fileProp);
+        if (fileProp.requiresAck()) {
+            ReplicationProtocol.sendAck(socketChannel);
+        }
     }
 
     public void handleLogReplication() throws IOException, ACIDException {
-//        //set initial buffer size to a log buffer page size
-//        inBuffer = ByteBuffer.allocate(replicationChannel.getLogManager().getLogPageSize());
-//        while (true) {
-//            //read a batch of logs
-//            inBuffer = ReplicationProtocol.readRequest(socketChannel, inBuffer);
-//            //check if it is end of handshake (a single byte log)
-//            if (inBuffer.remaining() == LOG_REPLICATION_END_HANKSHAKE_LOG_SIZE) {
-//                break;
-//            }
-//
-//            replayLogs(inBuffer);
-//        }
-    }
-
-    private void replayLogs(ByteBuffer buffer) throws ACIDException {
-
-    }
-
-    @Override public void notifyLogReplicationRequester(LogRecord logRecord) {
-
-    }
-
-    @Override public SocketChannel getReplicationClientSocket() {
-        return null;
-    }
-
-    public void flushAllWriteQs() {
-        LOGGER.info("RECOVERY?? FLUSHING ALL WRITE BUFFERS AGAIN");
-        partitionWriteBuffer.keySet().forEach(x -> {
-            try {
-                flushWriteBufferToQ(x);
-            } catch (InterruptedException e) {
-                e.printStackTrace();
+        //set initial buffer size to a log buffer page size
+        inBuffer = ByteBuffer.allocate(replicationChannel.getLogManager().getLogPageSize());
+        while (true) {
+            //read a batch of logs
+            inBuffer = ReplicationProtocol.readRequest(socketChannel, inBuffer);
+            //check if it is end of handshake (a single byte log)
+            if (inBuffer.remaining() == LOG_REPLICATION_END_HANKSHAKE_LOG_SIZE) {
+                break;
             }
-        });
-    }
 
-
-    public void startThreads() {
-        ExecutorService service = Executors.newFixedThreadPool(nodePartitions.size());
-        nodePartitions.stream()
-                .forEach(partition -> service.submit(new ReplicationMaterialzationThread(partition,
-                        partitionReplicationQs.get(partition), partitionWriteBuffer.get(partition))));
-    }
-
-    public void bufferCopy(ILogRecord logRecord) throws InterruptedException {
-        int partitionId = logRecord.getResourcePartition();
-        int logSize = logRecord.getRemoteLogSize(); // TODO: logSize or remoteLogSize?
-        synchronized (partitionMonitors.get(partitionId)) {
-            ByteBuffer writeBuffer = partitionWriteBuffer.get(partitionId);
-            if (writeBuffer.remaining() < logSize) {
-                LOGGER.log(Level.INFO, "REPL: RP" + partitionId + " write buffer is full, flushing it to Q");
-                flushWriteBufferToQ(partitionId);
-                writeBuffer = partitionWriteBuffer.get(partitionId);
-            }
-            logRecord.writeRemoteLogRecord(writeBuffer);
-            partitionMonitors.get(partitionId).notify();
+            processLogsBatch(inBuffer);
         }
     }
 
-    private ByteBuffer getWriteBufferForPartition(int resourcePartition) {
-        return partitionWriteBuffer.get(resourcePartition);
-    }
+    private void processLogsBatch(ByteBuffer buffer) throws ACIDException {
+        while (buffer.hasRemaining()) {
+            //get rid of log size
+            inBuffer.getInt();
+            //Deserialize log
+            remoteLog.readRemoteLog(inBuffer);
+            remoteLog.setLogSource(LogSource.REMOTE);
 
-    public synchronized void submit(ILogRecord logRecord) {
-        try {
-            bufferCopy(logRecord);
-        } catch (InterruptedException e) {
-            e.printStackTrace();
-        }
-    }
-
-    private ILogRecord readFromBuffer(ByteBuffer buffer) {
-        ILogRecord logRecord = new LogRecord();
-        synchronized (buffer) {
-            // TODO: Construct LogRecord here from buffer.
-        }
-        return logRecord;
-    }
-
-    private boolean flushReplicationQ(int partition) {
-        return false;
-    }
-
-    private boolean flushWriteBufferToQ(int partition) throws InterruptedException {
-        synchronized (partitionMonitors.get(partition)) {
-            ByteBuffer currentBuffer = getWriteBufferForPartition(partition);
-            if (currentBuffer.position() == 0) {
-                return false;
-            }
-            Instant now = Instant.now();
-            ByteBuffer freeBuffer = freeBufferQ.take();
-            Instant end = Instant.now();
-            LOGGER.log(Level.INFO, "REPL: Partition " + partition + " waited " + Duration.between(now, end).toMillis
-                    () + "ms");
-            freeBuffer.clear();
-            partitionWriteBuffer.replace(partition, freeBuffer);
-            currentBuffer.flip();
-            partitionReplicationQs.get(partition).offer(currentBuffer);
-            partitionMonitors.get(partition).notify();
-        }
-        return true;
-    }
-
-    public void refreshLocalResourceMap() throws HyracksDataException {
-        this.resourceMap = ((PersistentLocalResourceRepository) localResourceRepository).loadAndGetAllResources();
-    }
-
-    private class ReplicationMaterialzationThread implements Runnable {
-
-        private final int partition;
-        private final BlockingQueue<ByteBuffer> jobQ;
-        private ByteBuffer buffer;
-        ILogRecord logRecord;
-
-        public ReplicationMaterialzationThread(int partition, BlockingQueue<ByteBuffer> jobQ, ByteBuffer buffer) {
-            this.partition = partition;
-            this.jobQ = jobQ;
-            this.logRecord = new LogRecord();
-        }
-
-        @Override
-        public void run() {
-            String name = "RMT-" + partition;
-            Thread.currentThread().setName(name);
-            while (true) {
-                try {
-                    synchronized (partitionMonitors.get(partition)) {
-                        while (jobQ.isEmpty()) {
-                            LOGGER.log(Level.INFO, "REPL: " + name + " waiting because jobQ is empty");
-                            partitionMonitors.get(partition).wait();
-                            LOGGER.log(Level.INFO, "REPL: " + name + ": Requesting a flush");
-                            if (!flushWriteBufferToQ(partition)) {
-                                LOGGER.log(Level.INFO, "REPL:" + name + ": Flush buffer failed for thread because of empty buffer");
-                                continue;
-                            } else {
-                                LOGGER.log(Level.INFO, "REPL: " + name + ": Successful buffer switch");
-                                break;
-                            }
-                        }
+            switch (remoteLog.getLogType()) {
+                case LogType.UPDATE:
+                case LogType.ENTITY_COMMIT:
+                case LogType.UPSERT_ENTITY_COMMIT:
+                    //if the log partition belongs to a partitions hosted on this node, replicate it
+                    if (replicationChannel.nodeHostedPartitions.contains(remoteLog.getResourcePartition())) {
+                        replicationChannel.getLogManager().log(remoteLog);
+                        LOGGER.info("Persisting log: " + remoteLog.getLogRecordForDisplay());
+                        replicationChannel.streamingReplicationJobManager.submit(remoteLog);
                     }
-                    buffer = jobQ.take();
-                    int counter = 0;
-                    Instant start = Instant.now();
-                    while (buffer.hasRemaining()) {
-                        logRecord.readRemoteLog(buffer);
-                        counter++;
-                        LOGGER.log(Level.INFO, "REPL: " + name + " : read log record " + logRecord.getLogRecordForDisplay());
-                        try {
-                            materialize();
-                        } catch (Exception e) {
-                            LOGGER.log(Level.INFO, "REPL FAILED: " + name + " " +logRecord.getLogRecordForDisplay
-                                    ());
-                        }
+                    break;
+                case LogType.JOB_COMMIT:
+                case LogType.ABORT:
+                    LogRecord jobTerminationLog = new LogRecord();
+                    TransactionUtil.formJobTerminateLogRecord(jobTerminationLog, remoteLog.getJobId(),
+                            remoteLog.getLogType() == LogType.JOB_COMMIT);
+                    jobTerminationLog.setReplicationThread(this);
+                    jobTerminationLog.setLogSource(LogSource.REMOTE);
+                    replicationChannel.getLogManager().log(jobTerminationLog);
+                    break;
+                case LogType.FLUSH:
+                    LOGGER.info("Flush record: " + remoteLog.getLogRecordForDisplay());
+                    //store mapping information for flush logs to use them in incoming LSM components.
+                    RemoteLogMapping flushLogMap = new RemoteLogMapping();
+                    flushLogMap.setRemoteNodeID(remoteLog.getNodeId());
+                    flushLogMap.setRemoteLSN(remoteLog.getLSN());
+                    replicationChannel.getLogManager().log(remoteLog);
+                    //the log LSN value is updated by logManager.log(.) to a local value
+                    flushLogMap.setLocalLSN(remoteLog.getLSN());
+                    flushLogMap.numOfFlushedIndexes.set(remoteLog.getNumOfFlushedIndexes());
+                    replicationChannel.replicaUniqueLSN2RemoteMapping.put(flushLogMap.getNodeUniqueLSN(), flushLogMap);
+                    synchronized (replicationChannel.flushLogslock) {
+                        replicationChannel.flushLogslock.notify();
                     }
-                    Instant end = Instant.now();
-                    LOGGER.log(Level.INFO, "REPL: STATS: " + name + " Num Logs in prev buffer: " + counter + " JOBQ "
-                            + "has" + jobQ.size() + " buffers waiting! and time to complete " + Duration.between(start, end).toMillis());
-                    buffer.clear();
-                    freeBufferQ.offer(buffer);
-                } catch (InterruptedException e) {
-                    e.printStackTrace();
-                }
+                    break;
+                default:
+                    LOGGER.severe("Unsupported LogType: " + remoteLog.getLogType());
             }
         }
+    }
 
-        private void materialize() {
-            long resourceId = logRecord.getResourceId();
-            if (logRecord.getLogType() == LogType.UPDATE) {
-                try {
-                    LocalResource localResource = resourceMap.get(resourceId);
-                    if (localResource == null) {
-                        synchronized (resourceMapLock) {
-                            localResource = resourceMap.get(resourceId);
-                            if (localResource == null) {
-                                LOGGER.log(Level.INFO, "Local resource " + resourceId + " not found!, refreshing the local "
-                                        + "resource repository.");
-                                refreshLocalResourceMap();
-                                localResource = resourceMap.get(resourceId);
-                            }
-                        }
-                    }
-                    Resource localResourceMetadata = (Resource) localResource.getResource();
-                    ILSMIndex index = (ILSMIndex) datasetLifecycleManager.get(localResource.getPath());
-                    if (index == null) {
-                        index = localResourceMetadata
-                                .createIndexInstance(txnSubSystem.getServiceContext(), localResource);
-                        datasetLifecycleManager.register(localResource.getPath(), index);
-                        datasetLifecycleManager.open(localResource.getPath());
-                    }
-                    LOGGER.log(Level.INFO, "REPL: " + Thread.currentThread().getName() + " Redoing " + logRecord
-                            .getLogRecordForDisplay());
+    /**
+     * this method is called sequentially by LogPage (notifyReplicationTerminator)
+     * for JOB_COMMIT and JOB_ABORT log types.
+     */
+    @Override
+    public void notifyLogReplicationRequester(LogRecord logRecord) {
+        replicationChannel.pendingNotificationRemoteLogsQ.offer
+                (logRecord);
+    }
 
-                    ILSMIndexAccessor indexAccessor = index
-                            .createAccessor(NoOpOperationCallback.INSTANCE, NoOpOperationCallback.INSTANCE);
-
-                    if (logRecord.getNewOp() == IndexOperation.INSERT.ordinal()) {
-                        indexAccessor.insert(logRecord.getNewValue()); // TODO: Changed from forceInsert to insert.
-                    } else if (logRecord.getNewOp() == IndexOperation.DELETE.ordinal()) {
-                        indexAccessor.delete(logRecord.getNewValue()); // TODO: Changed from forceDelete to delete.
-                    } else {
-                        LOGGER.log(Level.SEVERE, "Unknown Optype to replicate!");
-                    }
-                } catch (HyracksDataException e) {
-                    LOGGER.log(Level.SEVERE, "REPL: Replicationg a record failed!!!");
-                    e.printStackTrace();
-                } catch (IndexException e) {
-                    // TODO: change this to a catch all exception?
-                    e.printStackTrace();
-                }
-            }
-        }
+    @Override
+    public SocketChannel getReplicationClientSocket() {
+        return socketChannel;
     }
 }

@@ -26,58 +26,25 @@ import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
 import java.nio.channels.ServerSocketChannel;
-import java.nio.channels.SocketChannel;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.ArrayList;
-import java.util.HashSet;
-import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
-import org.apache.asterix.common.api.IDatasetLifecycleManager;
-import org.apache.asterix.common.cluster.ClusterPartition;
-import org.apache.asterix.common.config.IPropertiesProvider;
 import org.apache.asterix.common.config.ReplicationProperties;
-import org.apache.asterix.common.context.IndexInfo;
-import org.apache.asterix.common.exceptions.ACIDException;
-import org.apache.asterix.common.ioopcallbacks.AbstractLSMIOOperationCallback;
 import org.apache.asterix.common.replication.IReplicaResourcesManager;
-import org.apache.asterix.common.replication.IReplicationChannel;
 import org.apache.asterix.common.replication.IReplicationManager;
-import org.apache.asterix.common.replication.IReplicationStrategy;
-import org.apache.asterix.common.replication.IReplicationThread;
-import org.apache.asterix.common.replication.ReplicaEvent;
-import org.apache.asterix.common.storage.IndexFileProperties;
 import org.apache.asterix.common.transactions.IAppRuntimeContextProvider;
 import org.apache.asterix.common.transactions.ILogManager;
-import org.apache.asterix.common.transactions.LogRecord;
-import org.apache.asterix.common.transactions.LogSource;
-import org.apache.asterix.common.transactions.LogType;
-import org.apache.asterix.common.utils.StoragePathUtil;
-import org.apache.asterix.common.utils.TransactionUtil;
-import org.apache.asterix.replication.functions.ReplicaFilesRequest;
-import org.apache.asterix.replication.functions.ReplicaIndexFlushRequest;
-import org.apache.asterix.replication.functions.ReplicationProtocol;
-import org.apache.asterix.replication.functions.ReplicationProtocol.ReplicationRequestType;
 import org.apache.asterix.replication.logging.RemoteLogMapping;
 import org.apache.asterix.replication.storage.LSMComponentLSNSyncTask;
 import org.apache.asterix.replication.storage.LSMComponentProperties;
-import org.apache.asterix.replication.storage.LSMIndexFileProperties;
-import org.apache.asterix.replication.storage.ReplicaResourcesManager;
-import org.apache.asterix.transaction.management.resource.PersistentLocalResourceRepository;
 import org.apache.hyracks.api.application.INCServiceContext;
 import org.apache.hyracks.storage.am.lsm.common.api.LSMOperationType;
-import org.apache.hyracks.storage.am.lsm.common.impls.AbstractLSMIndex;
-import org.apache.hyracks.util.StorageUtil;
-import org.apache.hyracks.util.StorageUtil.StorageUnit;
 
 /**
  * This class is used to receive and process replication requests from remote replicas or replica events from CC
@@ -92,7 +59,7 @@ public class ReplicationChannel extends AbstractReplicationChannel {
     protected final Map<String, LSMComponentProperties> lsmComponentId2PropertiesMap;
     protected final LSMComponentsSyncService lsmComponentLSNMappingService;
     protected final ReplicationNotifier replicationNotifier;
-    protected final StreamingReplicationThread streamingReplicationThread;
+    protected final StreamingReplicationJobManager streamingReplicationJobManager;
 
     public ReplicationChannel(String nodeId, ReplicationProperties replicationProperties, ILogManager logManager,
             IReplicaResourcesManager replicaResoucesManager, IReplicationManager replicationManager,
@@ -104,12 +71,12 @@ public class ReplicationChannel extends AbstractReplicationChannel {
         replicaUniqueLSN2RemoteMapping = new ConcurrentHashMap<>();
         lsmComponentLSNMappingService = new LSMComponentsSyncService();
         replicationNotifier = new ReplicationNotifier();
-        this.streamingReplicationThread = new StreamingReplicationThread(appContextProvider);
+        this.streamingReplicationJobManager = new StreamingReplicationJobManager(appContextProvider);
     }
 
-    public StreamingReplicationThread getStreamingReplicationThread() {
+    public StreamingReplicationJobManager getStreamingReplicationJobManager() {
         //TODO: Move to StreamingReplicationChannel
-        return streamingReplicationThread;
+        return streamingReplicationJobManager;
     }
 
     @Override

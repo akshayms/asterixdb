@@ -330,7 +330,8 @@ public class AutoFaultToleranceStrategy implements IFaultToleranceStrategy {
 
     public synchronized void process(TakeoverPartitionsResponseMessage response) throws HyracksDataException {
         for (Integer partitonId : response.getPartitions()) {
-            clusterManager.updateClusterPartition(partitonId, response.getNodeId(), true);
+            clusterManager.
+                    updateClusterPartition(partitonId, response.getNodeId(), true);
         }
         pendingTakeoverRequests.remove(response.getRequestId());
         validateClusterState();

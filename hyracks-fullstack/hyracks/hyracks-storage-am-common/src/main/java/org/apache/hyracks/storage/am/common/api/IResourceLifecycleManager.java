@@ -47,6 +47,8 @@ public interface IResourceLifecycleManager<R> extends IResourceMemoryManager {
      */
     public void register(String resourceId, R resource) throws HyracksDataException;
 
+    public void register(String resourceId, R resource, boolean isInActiveReplicaIndex) throws HyracksDataException;
+
     /**
      * Opens a resource. The resource is moved to the open state
      *

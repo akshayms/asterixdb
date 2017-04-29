@@ -35,6 +35,7 @@ import org.apache.hyracks.storage.am.lsm.common.api.ILSMIOOperationCallbackFacto
 import org.apache.hyracks.storage.am.lsm.common.api.ILSMIndex;
 import org.apache.hyracks.storage.am.lsm.common.api.ILSMMergePolicyFactory;
 import org.apache.hyracks.storage.am.lsm.common.api.ILSMOperationTrackerFactory;
+import org.apache.hyracks.storage.am.lsm.common.impls.NoOpOperationTrackerFactory;
 import org.apache.hyracks.storage.common.file.LocalResource;
 
 public class LSMBTreeLocalResourceMetadata extends Resource {
@@ -88,6 +89,23 @@ public class LSMBTreeLocalResourceMetadata extends Resource {
                 bloomFilterKeyFields, appCtx.getBloomFilterFalsePositiveRate(),
                 mergePolicyFactory.createMergePolicy(mergePolicyProperties, datasetLifecycleManager),
                 opTrackerProvider.getOperationTracker(serviceCtx), appCtx.getLSMIOScheduler(),
+                ioOpCallbackFactory.createIoOpCallback(), isPrimary, filterTypeTraits, filterCmpFactories, btreeFields,
+                filterFields, true, metadataPageManagerFactory);
+    }
+
+    public ILSMIndex createIndexInstance(INCServiceContext serviceCtx, LocalResource resource, boolean isInactive)
+            throws HyracksDataException {
+        IAppRuntimeContext appCtx = (IAppRuntimeContext) serviceCtx.getApplicationContext();
+        IIOManager ioManager = appCtx.getIOManager();
+        FileReference file = ioManager.resolve(resource.getPath());
+        int ioDeviceNum = Resource.getIoDeviceNum(ioManager, file.getDeviceHandle());
+        final IDatasetLifecycleManager datasetLifecycleManager = appCtx.getDatasetLifecycleManager();
+        return LSMBTreeUtil.createInactiveLSMTree(ioManager,
+                datasetLifecycleManager.getVirtualBufferCaches(datasetId(), ioDeviceNum), file,
+                appCtx.getBufferCache(), appCtx.getFileMapManager(), typeTraits, cmpFactories,
+                bloomFilterKeyFields, appCtx.getBloomFilterFalsePositiveRate(),
+                mergePolicyFactory.createMergePolicy(mergePolicyProperties, datasetLifecycleManager),
+                NoOpOperationTrackerFactory.INSTANCE.getOperationTracker(serviceCtx), appCtx.getLSMIOScheduler(),
                 ioOpCallbackFactory.createIoOpCallback(), isPrimary, filterTypeTraits, filterCmpFactories, btreeFields,
                 filterFields, true, metadataPageManagerFactory);
     }

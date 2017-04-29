@@ -193,6 +193,12 @@ public class IndexLifecycleManager implements IResourceLifecycleManager<IIndex>,
     }
 
     @Override
+    public void register(String resourceId, IIndex resource, boolean isInActiveReplicaIndex)
+            throws HyracksDataException {
+        throw new RuntimeException("Unexpected call to unimplemented method!?!1");
+    }
+
+    @Override
     public void open(String resourcePath) throws HyracksDataException {
         IndexInfo info = indexInfos.get(resourcePath);
         if (info == null) {

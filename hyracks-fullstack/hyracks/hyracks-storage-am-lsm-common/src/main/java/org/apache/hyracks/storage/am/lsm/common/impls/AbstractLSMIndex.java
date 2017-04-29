@@ -318,4 +318,9 @@ public abstract class AbstractLSMIndex implements ILSMIndex {
     public List<ILSMMemoryComponent> getMemoryComponents() {
         return memoryComponents;
     }
+
+    @Override
+    public IIOManager getIOManager() {
+        return ioManager;
+    }
 }
