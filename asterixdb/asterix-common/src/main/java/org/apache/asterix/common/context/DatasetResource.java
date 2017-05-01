@@ -18,11 +18,11 @@
  */
 package org.apache.asterix.common.context;
 
-import java.util.Map;
-
 import org.apache.hyracks.api.exceptions.HyracksDataException;
 import org.apache.hyracks.storage.am.common.api.IIndex;
 import org.apache.hyracks.storage.am.lsm.common.api.ILSMIndex;
+
+import java.util.Map;
 
 /**
  * A dataset can be in one of two states { EVICTED , LOADED }.
@@ -41,8 +41,7 @@ public class DatasetResource implements Comparable<DatasetResource> {
     private final PrimaryIndexOperationTracker datasetPrimaryOpTracker;
     private final DatasetVirtualBufferCaches datasetVirtualBufferCaches;
 
-    public DatasetResource(DatasetInfo datasetInfo,
-            PrimaryIndexOperationTracker datasetPrimaryOpTracker,
+    public DatasetResource(DatasetInfo datasetInfo, PrimaryIndexOperationTracker datasetPrimaryOpTracker,
             DatasetVirtualBufferCaches datasetVirtualBufferCaches) {
         this.datasetInfo = datasetInfo;
         this.datasetPrimaryOpTracker = datasetPrimaryOpTracker;
@@ -102,8 +101,28 @@ public class DatasetResource implements Comparable<DatasetResource> {
         if (index == null) {
             throw new HyracksDataException("Attempt to register a null index");
         }
-        datasetInfo.getIndexes().put(resourceID,
-                new IndexInfo((ILSMIndex) index, datasetInfo.getDatasetID(), resourceID));
+        datasetInfo.getIndexes()
+                .put(resourceID, new IndexInfo((ILSMIndex) index, datasetInfo.getDatasetID(), resourceID, true));
+    }
+
+    public void registerInactivePartitionIndex(long resourceID, IIndex index) throws HyracksDataException {
+        if (!datasetInfo.isRegistered()) {
+            synchronized (datasetInfo) {
+                if (!datasetInfo.isRegistered()) {
+                    datasetInfo.setExternal(!index.hasMemoryComponents());
+                    datasetInfo.setRegistered(true);
+                    datasetInfo.setDurable(((ILSMIndex) index).isDurable());
+                }
+            }
+        }
+        if (datasetInfo.getIndexes().containsKey(resourceID)) {
+            throw new HyracksDataException("Index with resource ID " + resourceID + " already exists.");
+        }
+        if (index == null) {
+            throw new HyracksDataException("Attempt to register a null index");
+        }
+        datasetInfo.getIndexes()
+                .put(resourceID, new IndexInfo((ILSMIndex) index, datasetInfo.getDatasetID(), resourceID, false));
     }
 
     public DatasetInfo getDatasetInfo() {
@@ -114,21 +133,18 @@ public class DatasetResource implements Comparable<DatasetResource> {
         return datasetPrimaryOpTracker;
     }
 
-    @Override
-    public int compareTo(DatasetResource o) {
+    @Override public int compareTo(DatasetResource o) {
         return datasetInfo.compareTo(o.datasetInfo);
     }
 
-    @Override
-    public boolean equals(Object obj) {
+    @Override public boolean equals(Object obj) {
         if (obj instanceof DatasetResource) {
             return datasetInfo.equals(((DatasetResource) obj).datasetInfo);
         }
         return false;
     }
 
-    @Override
-    public int hashCode() {
+    @Override public int hashCode() {
         return datasetInfo.hashCode();
     }
 

@@ -3,6 +3,7 @@ package org.apache.asterix.replication.management;
 import org.apache.asterix.common.api.IAppRuntimeContext;
 import org.apache.asterix.common.api.IDatasetLifecycleManager;
 import org.apache.asterix.common.config.MetadataProperties;
+import org.apache.asterix.common.context.DatasetLifecycleManager;
 import org.apache.asterix.common.exceptions.ACIDException;
 import org.apache.asterix.common.replication.IReplicationChannel;
 import org.apache.asterix.common.replication.IReplicationThread;
@@ -203,6 +204,9 @@ public class StreamingReplicationThread implements IReplicationThread {
             }
             Instant now = Instant.now();
             ByteBuffer freeBuffer = freeBufferQ.take();
+//            if (freeBuffer == null) {
+//                freeBuffer = ByteBuffer.allocate(DEFAULT_LOG_PAGE_SIZE);
+//            }
             Instant end = Instant.now();
             LOGGER.log(Level.INFO, "REPL: Partition " + partition + " waited " + Duration.between(now, end).toMillis
                     () + "ms");
@@ -238,20 +242,20 @@ public class StreamingReplicationThread implements IReplicationThread {
             Thread.currentThread().setName(name);
             while (true) {
                 try {
-                    synchronized (partitionMonitors.get(partition)) {
-                        while (jobQ.isEmpty()) {
-                            LOGGER.log(Level.INFO, "REPL: " + name + " waiting because jobQ is empty");
-                            partitionMonitors.get(partition).wait();
-                            LOGGER.log(Level.INFO, "REPL: " + name + ": Requesting a flush");
-                            if (!flushWriteBufferToQ(partition)) {
-                                LOGGER.log(Level.INFO, "REPL:" + name + ": Flush buffer failed for thread because of empty buffer");
-                                continue;
-                            } else {
-                                LOGGER.log(Level.INFO, "REPL: " + name + ": Successful buffer switch");
-                                break;
-                            }
-                        }
-                    }
+//                    synchronized (partitionMonitors.get(partition)) {
+//                        while (jobQ.isEmpty()) {
+//                            LOGGER.log(Level.INFO, "REPL: " + name + " waiting because jobQ is empty");
+//                            partitionMonitors.get(partition).wait();
+//                            LOGGER.log(Level.INFO, "REPL: " + name + ": Requesting a flush");
+//                            if (!flushWriteBufferToQ(partition)) {
+//                                LOGGER.log(Level.INFO, "REPL:" + name + ": Flush buffer failed for thread because of empty buffer");
+//                                continue;
+//                            } else {
+//                                LOGGER.log(Level.INFO, "REPL: " + name + ": Successful buffer switch");
+//                                break;
+//                            }
+//                        }
+//                    }
                     buffer = jobQ.take();
                     int counter = 0;
                     Instant start = Instant.now();
@@ -298,7 +302,9 @@ public class StreamingReplicationThread implements IReplicationThread {
                     if (index == null) {
                         index = localResourceMetadata
                                 .createIndexInstance(txnSubSystem.getServiceContext(), localResource);
-                        datasetLifecycleManager.register(localResource.getPath(), index);
+                        //datasetLifecycleManager.register(localResource.getPath(), index);
+                        ((DatasetLifecycleManager)datasetLifecycleManager).registerInactivePartitionIndex(localResource
+                                        .getPath(), index);
                         datasetLifecycleManager.open(localResource.getPath());
                     }
                     LOGGER.log(Level.INFO, "REPL: " + Thread.currentThread().getName() + " Redoing " + logRecord
@@ -308,9 +314,9 @@ public class StreamingReplicationThread implements IReplicationThread {
                             .createAccessor(NoOpOperationCallback.INSTANCE, NoOpOperationCallback.INSTANCE);
 
                     if (logRecord.getNewOp() == IndexOperation.INSERT.ordinal()) {
-                        indexAccessor.insert(logRecord.getNewValue()); // TODO: Changed from forceInsert to insert.
+                        indexAccessor.forceInsert(logRecord.getNewValue()); // TODO: Changed from forceInsert to insert.
                     } else if (logRecord.getNewOp() == IndexOperation.DELETE.ordinal()) {
-                        indexAccessor.delete(logRecord.getNewValue()); // TODO: Changed from forceDelete to delete.
+                        indexAccessor.forceDelete(logRecord.getNewValue()); // TODO: Changed from forceDelete to delete.
                     } else {
                         LOGGER.log(Level.SEVERE, "Unknown Optype to replicate!");
                     }
@@ -321,6 +327,8 @@ public class StreamingReplicationThread implements IReplicationThread {
                     // TODO: change this to a catch all exception?
                     e.printStackTrace();
                 }
+            } else {
+                LOGGER.info("REPl: Unexpected log type: " + logRecord.getLogRecordForDisplay());
             }
         }
     }

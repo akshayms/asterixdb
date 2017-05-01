@@ -37,7 +37,7 @@ import java.util.logging.Logger;
 
 public class LogManager implements ILogManager, ILifeCycleComponent {
 
-    public static final boolean IS_DEBUG_MODE = false;// true
+    public static final boolean IS_DEBUG_MODE = true;// true
     private static final Logger LOGGER = Logger.getLogger(LogManager.class.getName());
     private final ITransactionSubsystem txnSubsystem;
 

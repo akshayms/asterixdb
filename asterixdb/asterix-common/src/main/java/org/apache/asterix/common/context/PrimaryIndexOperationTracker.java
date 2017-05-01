@@ -96,7 +96,8 @@ public class PrimaryIndexOperationTracker extends BaseOperationTracker {
         // or if there is a flush scheduled by the checkpoint (flushOnExit), then schedule it
 
         boolean needsFlush = false;
-        Set<ILSMIndex> indexes = dsInfo.getDatasetIndexes();
+        //Set<ILSMIndex> indexes = dsInfo.getDatasetIndexes();
+        Set<ILSMIndex> indexes = dsInfo.getActivePartitionIndexes();
 
         if (!flushOnExit) {
             for (ILSMIndex lsmIndex : indexes) {
@@ -125,8 +126,10 @@ public class PrimaryIndexOperationTracker extends BaseOperationTracker {
                  * Generate a FLUSH log.
                  * Flush will be triggered when the log is written to disk by LogFlusher.
                  */
+                //TransactionUtil.formFlushLogRecord(logRecord, datasetID, this, logManager.getNodeId(),
+                 //       dsInfo.getDatasetIndexes().size());
                 TransactionUtil.formFlushLogRecord(logRecord, datasetID, this, logManager.getNodeId(),
-                        dsInfo.getDatasetIndexes().size());
+                        dsInfo.getActivePartitionIndexes().size());
                 try {
                     logManager.log(logRecord);
                 } catch (ACIDException e) {
@@ -142,7 +145,8 @@ public class PrimaryIndexOperationTracker extends BaseOperationTracker {
 
     //This method is called sequentially by LogPage.notifyFlushTerminator in the sequence flushes were scheduled.
     public synchronized void triggerScheduleFlush(LogRecord logRecord) throws HyracksDataException {
-        for (ILSMIndex lsmIndex : dsInfo.getDatasetIndexes()) {
+        //for (ILSMIndex lsmIndex : dsInfo.getDatasetIndexes()) {
+        for (ILSMIndex lsmIndex : dsInfo.getActivePartitionIndexes()) {
 
             //get resource
             ILSMIndexAccessor accessor =

@@ -75,6 +75,8 @@ public abstract class AbstractCheckpointManager implements ICheckpointManager {
         pollFrequency = checkpointProperties.getPollFrequency();
         // We must keep at least the latest checkpoint
         historyToKeep = checkpointProperties.getHistoryToKeep() == 0 ? 1 : checkpointProperties.getHistoryToKeep();
+        LOGGER.info("Checkpoint threshold: " + lsnThreshold);
+        LOGGER.info("Checkpoint poll frequency: " + pollFrequency);
     }
 
     @Override

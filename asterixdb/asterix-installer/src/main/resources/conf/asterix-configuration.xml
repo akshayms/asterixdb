@@ -144,7 +144,7 @@
 
   <property>
     <name>txn.log.checkpoint.lsnthreshold</name>
-    <value>67108864</value>
+    <value>8388608</value>
     <description>The size of the window that the maximum LSN is allowed to
       be ahead of the checkpoint LSN by. (Default = ""67108864" // 64M)
     </description>
@@ -152,7 +152,7 @@
 
   <property>
     <name>txn.log.checkpoint.pollfrequency</name>
-    <value>120</value>
+    <value>10</value>
     <description>The time in seconds between that the checkpoint thread
       waits between polls. (Default = "120" // 120s)
     </description>

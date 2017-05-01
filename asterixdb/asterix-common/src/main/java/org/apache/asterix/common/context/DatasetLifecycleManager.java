@@ -102,6 +102,18 @@ public class DatasetLifecycleManager implements IDatasetLifecycleManager, ILifeC
         datasetResource.register(resourceID, index);
     }
 
+    public synchronized void registerInactivePartitionIndex(String resourcePath, IIndex index) throws
+            HyracksDataException {
+        validateDatasetLifecycleManagerState();
+        int did = getDIDfromResourcePath(resourcePath);
+        long resourceID = getResourceIDfromResourcePath(resourcePath);
+        DatasetResource datasetResource = datasets.get(did);
+        if (datasetResource == null) {
+            datasetResource = getDatasetLifecycle(did);
+        }
+        datasetResource.registerInactivePartitionIndex(resourceID, index);
+    }
+
     public int getDIDfromResourcePath(String resourcePath) throws HyracksDataException {
         LocalResource lr = resourceRepository.get(resourcePath);
         if (lr == null) {

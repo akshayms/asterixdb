@@ -438,7 +438,7 @@ public class RecoveryManager implements IRecoveryManager, ILifeCycleComponent {
         long minFirstLSN = getLocalMinFirstLSN();
 
         //if replication is enabled, consider replica resources min LSN
-        if (replicationEnabled) {
+        if (replicationEnabled && !streamingReplication) {
             long remoteMinFirstLSN = getRemoteMinFirstLSN();
             minFirstLSN = Math.min(minFirstLSN, remoteMinFirstLSN);
         }

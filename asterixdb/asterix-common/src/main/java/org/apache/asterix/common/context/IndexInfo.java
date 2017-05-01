@@ -24,11 +24,13 @@ public class IndexInfo extends Info {
     private final ILSMIndex index;
     private final long resourceId;
     private final int datasetId;
+    private boolean isActivePartitionIndex;
 
-    public IndexInfo(ILSMIndex index, int datasetId, long resourceId) {
+    public IndexInfo(ILSMIndex index, int datasetId, long resourceId, boolean isActivePartitionIndex) {
         this.index = index;
         this.datasetId = datasetId;
         this.resourceId = resourceId;
+        this.isActivePartitionIndex = isActivePartitionIndex;
     }
 
     public ILSMIndex getIndex() {
@@ -41,5 +43,9 @@ public class IndexInfo extends Info {
 
     public int getDatasetId() {
         return datasetId;
+    }
+
+    public boolean isActivePartitionIndex() {
+        return isActivePartitionIndex;
     }
 }

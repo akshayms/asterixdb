@@ -18,12 +18,13 @@
  */
 package org.apache.asterix.common.context;
 
+import org.apache.hyracks.storage.am.lsm.common.api.ILSMIndex;
+
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
-
-import org.apache.hyracks.storage.am.lsm.common.api.ILSMIndex;
+import java.util.stream.Collectors;
 
 public class DatasetInfo extends Info implements Comparable<DatasetInfo> {
     private final Map<Long, IndexInfo> indexes;
@@ -43,14 +44,12 @@ public class DatasetInfo extends Info implements Comparable<DatasetInfo> {
         this.setMemoryAllocated(false);
     }
 
-    @Override
-    public void touch() {
+    @Override public void touch() {
         super.touch();
         setLastAccess(System.currentTimeMillis());
     }
 
-    @Override
-    public void untouch() {
+    @Override public void untouch() {
         super.untouch();
         setLastAccess(System.currentTimeMillis());
     }
@@ -76,8 +75,18 @@ public class DatasetInfo extends Info implements Comparable<DatasetInfo> {
         return datasetIndexes;
     }
 
-    @Override
-    public int compareTo(DatasetInfo i) {
+    public synchronized Set<ILSMIndex> getActivePartitionIndexes() {
+        return getIndexes().values().stream().filter(IndexInfo::isActivePartitionIndex).map(IndexInfo::getIndex)
+                .collect(Collectors.toSet());
+    }
+
+    public synchronized Set<ILSMIndex> getReplicaPartitionIndexes() {
+        Set<ILSMIndex> datasetIndexes = getDatasetIndexes();
+        datasetIndexes.remove(getActivePartitionIndexes());
+        return datasetIndexes;
+    }
+
+    @Override public int compareTo(DatasetInfo i) {
         // sort by (isOpen, referenceCount, lastAccess) ascending, where true < false
         //
         // Example sort order:
@@ -109,21 +118,20 @@ public class DatasetInfo extends Info implements Comparable<DatasetInfo> {
         }
     }
 
-    @Override
-    public boolean equals(Object obj) {
+    @Override public boolean equals(Object obj) {
         if (obj instanceof DatasetInfo) {
             return datasetID == ((DatasetInfo) obj).datasetID;
         }
         return false;
-    };
+    }
 
-    @Override
-    public int hashCode() {
+    ;
+
+    @Override public int hashCode() {
         return datasetID;
     }
 
-    @Override
-    public String toString() {
+    @Override public String toString() {
         return "DatasetID: " + getDatasetID() + ", isOpen: " + isOpen() + ", refCount: " + getReferenceCount()
                 + ", lastAccess: " + getLastAccess() + ", isRegistered: " + isRegistered() + ", memoryAllocated: "
                 + isMemoryAllocated() + ", isDurable: " + isDurable();
