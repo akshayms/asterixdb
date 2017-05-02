@@ -132,6 +132,15 @@ public class ReplicaResourcesManager implements IReplicaResourcesManager {
         return remoteIndexesPaths;
     }
 
+    public Set<Integer> getRemoteNodePartitions(String replicaId) {
+        ClusterPartition[] partitions = nodePartitions.get(replicaId);
+        Set<Integer> remotePartitions = new HashSet<>();
+        for (ClusterPartition partition : partitions) {
+            remotePartitions.add(partition.getPartitionId());
+        }
+        return remotePartitions;
+    }
+
     @Override
     public long getPartitionsMinLSN(Set<Integer> partitions) {
         long minRemoteLSN = Long.MAX_VALUE;

@@ -1,14 +1,14 @@
 package org.apache.asterix.replication.management;
 
-import org.apache.asterix.common.api.IAppRuntimeContext;
 import org.apache.asterix.common.api.IDatasetLifecycleManager;
-import org.apache.asterix.common.config.MetadataProperties;
+import org.apache.asterix.common.context.DatasetInfo;
 import org.apache.asterix.common.context.DatasetLifecycleManager;
+import org.apache.asterix.common.context.IndexInfo;
 import org.apache.asterix.common.exceptions.ACIDException;
-import org.apache.asterix.common.replication.IReplicationChannel;
+import org.apache.asterix.common.replication.IFaultToleranceStrategy;
 import org.apache.asterix.common.replication.IReplicationThread;
 import org.apache.asterix.common.transactions.*;
-import org.apache.asterix.replication.functions.ReplicationProtocol;
+import org.apache.asterix.runtime.utils.AppContextInfo;
 import org.apache.asterix.transaction.management.resource.PersistentLocalResourceRepository;
 import org.apache.hyracks.api.exceptions.HyracksDataException;
 import org.apache.hyracks.storage.am.common.api.IndexException;
@@ -20,7 +20,6 @@ import org.apache.hyracks.storage.common.file.ILocalResourceRepository;
 import org.apache.hyracks.storage.common.file.LocalResource;
 
 import java.io.IOException;
-import java.net.Socket;
 import java.nio.ByteBuffer;
 import java.nio.channels.SocketChannel;
 import java.time.Duration;
@@ -32,6 +31,7 @@ import java.util.Set;
 import java.util.concurrent.*;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import java.util.stream.Collectors;
 
 /**
  * Created by msa on 3/24/17.
@@ -64,11 +64,12 @@ public class StreamingReplicationThread implements IReplicationThread {
     private Map<Long, LocalResource> resourceMap;
     private Map<Integer, Set<Integer>> jobResourcesMap;
     private static final Object resourceMapLock = new Object();
+    private IFaultToleranceStrategy ftStrategy;
 
     //public StreamingReplicationManager(ITransactionSubsystem txnSubSystem, IAppRuntimeContextProvider
     //asterixAppRuntimeContextProvider, MetadataProperties metadataProperties)
     public StreamingReplicationThread(IAppRuntimeContextProvider appRuntimeContextProvider) {
-    //public StreamingReplicationThread(IReplicationChannel replicationChannel, SocketChannel socketChannel) {
+        //public StreamingReplicationThread(IReplicationChannel replicationChannel, SocketChannel socketChannel) {
         this.partitionReplicationQs = new ConcurrentHashMap<>();
         this.txnSubSystem = appRuntimeContextProvider.getTransactionSubsystem();
         this.nodePartitions = appRuntimeContextProvider.getAppContext().getMetadataProperties().getClusterPartitions()
@@ -77,8 +78,7 @@ public class StreamingReplicationThread implements IReplicationThread {
         this.partitionWriteBuffer = new ConcurrentHashMap<>();
         this.partitionMonitors = new ArrayList<>();
         this.freeBufferQ = new LinkedBlockingQueue<>();
-        this.localResourceRepository = txnSubSystem
-                .getAsterixAppRuntimeContextProvider().getLocalResourceRepository();
+        this.localResourceRepository = txnSubSystem.getAsterixAppRuntimeContextProvider().getLocalResourceRepository();
         //this.nodePartitions = ((PersistentLocalResourceRepository) localResourceRepository).getInactivePartitions();
         nodePartitions.stream().forEach(partitionId -> {
             // 3 buffers to start out with per partition on average.
@@ -103,27 +103,26 @@ public class StreamingReplicationThread implements IReplicationThread {
         } catch (HyracksDataException e) {
             e.printStackTrace();
         }
-        //this.counters = new ArrayList<>(numPartitions);
+        this.ftStrategy = AppContextInfo.INSTANCE.getFaultToleranceStrategy();
     }
 
-    @Override
-    public void run() {
+    @Override public void run() {
         Thread.currentThread().setName("Streaming Replication Thread");
     }
 
     public void handleLogReplication() throws IOException, ACIDException {
-//        //set initial buffer size to a log buffer page size
-//        inBuffer = ByteBuffer.allocate(replicationChannel.getLogManager().getLogPageSize());
-//        while (true) {
-//            //read a batch of logs
-//            inBuffer = ReplicationProtocol.readRequest(socketChannel, inBuffer);
-//            //check if it is end of handshake (a single byte log)
-//            if (inBuffer.remaining() == LOG_REPLICATION_END_HANKSHAKE_LOG_SIZE) {
-//                break;
-//            }
-//
-//            replayLogs(inBuffer);
-//        }
+        //        //set initial buffer size to a log buffer page size
+        //        inBuffer = ByteBuffer.allocate(replicationChannel.getLogManager().getLogPageSize());
+        //        while (true) {
+        //            //read a batch of logs
+        //            inBuffer = ReplicationProtocol.readRequest(socketChannel, inBuffer);
+        //            //check if it is end of handshake (a single byte log)
+        //            if (inBuffer.remaining() == LOG_REPLICATION_END_HANKSHAKE_LOG_SIZE) {
+        //                break;
+        //            }
+        //
+        //            replayLogs(inBuffer);
+        //        }
     }
 
     private void replayLogs(ByteBuffer buffer) throws ACIDException {
@@ -149,12 +148,41 @@ public class StreamingReplicationThread implements IReplicationThread {
         });
     }
 
+    public void flushDataset(ILogRecord logRecord, Set<Integer> remoteNodePartitions)
+            throws InterruptedException, HyracksDataException {
+        String sourceNode = logRecord.getNodeId();
+        int datasetId = logRecord.getDatasetId();
+        DatasetInfo dsInfo = datasetLifecycleManager.getDatasetInfo(datasetId);
+        List<IndexInfo> inactiveIndexes = dsInfo.getReplicaParitionIndexList();
+        //        ClusterPartition[] partitions = ClusterStateManager.INSTANCE.getNodePartitions(sourceNode);
+
+        // get all partition ids that are active on the source node.
+        // flush the partition write buffer to the materialization thread
+        for (int remoteActivePartition : remoteNodePartitions) {
+            flushWriteBufferToQ(remoteActivePartition);
+        }
+
+        // retain only those indexes whose partitions are hosted & active on sourceNode
+        inactiveIndexes = inactiveIndexes.stream()
+                .filter(index -> remoteNodePartitions.contains(index.getPartitionId())).collect(Collectors.toList());
+        LOGGER.info("Indexes to schedule a flush: " + inactiveIndexes);
+        Thread.sleep(1000); // this is not required.
+
+        // Get all the inactive partitions to have the same state as the primary by flushing its job queues.
+        for (IndexInfo indexInfo : inactiveIndexes) {
+            ILSMIndexAccessor accessor = indexInfo.getIndex()
+                    .createAccessor(NoOpOperationCallback.INSTANCE, NoOpOperationCallback.INSTANCE);
+            LOGGER.info("Scheduling flush for " + indexInfo);
+            accessor.scheduleFlush(indexInfo.getIndex().getIOOperationCallback());
+        }
+        LOGGER.info("Flushing complete!");
+    }
 
     public void startThreads() {
         ExecutorService service = Executors.newFixedThreadPool(nodePartitions.size());
-        nodePartitions.stream()
-                .forEach(partition -> service.submit(new ReplicationMaterialzationThread(partition,
-                        partitionReplicationQs.get(partition), partitionWriteBuffer.get(partition))));
+        nodePartitions.stream().forEach(partition -> service
+                .submit(new ReplicationMaterialzationThread(partition, partitionReplicationQs.get(partition),
+                        partitionWriteBuffer.get(partition))));
     }
 
     public void bufferCopy(ILogRecord logRecord) throws InterruptedException {
@@ -204,12 +232,12 @@ public class StreamingReplicationThread implements IReplicationThread {
             }
             Instant now = Instant.now();
             ByteBuffer freeBuffer = freeBufferQ.take();
-//            if (freeBuffer == null) {
-//                freeBuffer = ByteBuffer.allocate(DEFAULT_LOG_PAGE_SIZE);
-//            }
+            //            if (freeBuffer == null) {
+            //                freeBuffer = ByteBuffer.allocate(DEFAULT_LOG_PAGE_SIZE);
+            //            }
             Instant end = Instant.now();
-            LOGGER.log(Level.INFO, "REPL: Partition " + partition + " waited " + Duration.between(now, end).toMillis
-                    () + "ms");
+            LOGGER.log(Level.INFO,
+                    "REPL: Partition " + partition + " waited " + Duration.between(now, end).toMillis() + "ms");
             freeBuffer.clear();
             partitionWriteBuffer.replace(partition, freeBuffer);
             currentBuffer.flip();
@@ -236,43 +264,44 @@ public class StreamingReplicationThread implements IReplicationThread {
             this.logRecord = new LogRecord();
         }
 
-        @Override
-        public void run() {
+        @Override public void run() {
             String name = "RMT-" + partition;
             Thread.currentThread().setName(name);
             while (true) {
                 try {
-//                    synchronized (partitionMonitors.get(partition)) {
-//                        while (jobQ.isEmpty()) {
-//                            LOGGER.log(Level.INFO, "REPL: " + name + " waiting because jobQ is empty");
-//                            partitionMonitors.get(partition).wait();
-//                            LOGGER.log(Level.INFO, "REPL: " + name + ": Requesting a flush");
-//                            if (!flushWriteBufferToQ(partition)) {
-//                                LOGGER.log(Level.INFO, "REPL:" + name + ": Flush buffer failed for thread because of empty buffer");
-//                                continue;
-//                            } else {
-//                                LOGGER.log(Level.INFO, "REPL: " + name + ": Successful buffer switch");
-//                                break;
-//                            }
-//                        }
-//                    }
+                    //                    synchronized (partitionMonitors.get(partition)) {
+                    //                        while (jobQ.isEmpty()) {
+                    //                            LOGGER.log(Level.INFO, "REPL: " + name + " waiting because jobQ is empty");
+                    //                            partitionMonitors.get(partition).wait();
+                    //                            LOGGER.log(Level.INFO, "REPL: " + name + ": Requesting a flush");
+                    //                            if (!flushWriteBufferToQ(partition)) {
+                    //                                LOGGER.log(Level.INFO, "REPL:" + name + ": Flush buffer failed for thread because of empty buffer");
+                    //                                continue;
+                    //                            } else {
+                    //                                LOGGER.log(Level.INFO, "REPL: " + name + ": Successful buffer switch");
+                    //                                break;
+                    //                            }
+                    //                        }
+                    //                    }
                     buffer = jobQ.take();
                     int counter = 0;
                     Instant start = Instant.now();
                     while (buffer.hasRemaining()) {
                         logRecord.readRemoteLog(buffer);
                         counter++;
-                        LOGGER.log(Level.INFO, "REPL: " + name + " : read log record " + logRecord.getLogRecordForDisplay());
+                        LOGGER.log(Level.INFO,
+                                "REPL: " + name + " : read log record " + logRecord.getLogRecordForDisplay());
                         try {
                             materialize();
                         } catch (Exception e) {
-                            LOGGER.log(Level.INFO, "REPL FAILED: " + name + " " +logRecord.getLogRecordForDisplay
-                                    ());
+                            LOGGER.log(Level.INFO, "REPL FAILED: " + name + " " + logRecord.getLogRecordForDisplay());
                         }
                     }
                     Instant end = Instant.now();
-                    LOGGER.log(Level.INFO, "REPL: STATS: " + name + " Num Logs in prev buffer: " + counter + " JOBQ "
-                            + "has" + jobQ.size() + " buffers waiting! and time to complete " + Duration.between(start, end).toMillis());
+                    LOGGER.log(Level.INFO,
+                            "REPL: STATS: " + name + " Num Logs in prev buffer: " + counter + " JOBQ " + "has" + jobQ
+                                    .size() + " buffers waiting! and time to complete " + Duration.between(start, end)
+                                    .toMillis());
                     buffer.clear();
                     freeBufferQ.offer(buffer);
                 } catch (InterruptedException e) {
@@ -290,8 +319,9 @@ public class StreamingReplicationThread implements IReplicationThread {
                         synchronized (resourceMapLock) {
                             localResource = resourceMap.get(resourceId);
                             if (localResource == null) {
-                                LOGGER.log(Level.INFO, "Local resource " + resourceId + " not found!, refreshing the local "
-                                        + "resource repository.");
+                                LOGGER.log(Level.INFO,
+                                        "Local resource " + resourceId + " not found!, refreshing the local "
+                                                + "resource repository.");
                                 refreshLocalResourceMap();
                                 localResource = resourceMap.get(resourceId);
                             }
@@ -303,8 +333,8 @@ public class StreamingReplicationThread implements IReplicationThread {
                         index = localResourceMetadata
                                 .createIndexInstance(txnSubSystem.getServiceContext(), localResource);
                         //datasetLifecycleManager.register(localResource.getPath(), index);
-                        ((DatasetLifecycleManager)datasetLifecycleManager).registerInactivePartitionIndex(localResource
-                                        .getPath(), index);
+                        ((DatasetLifecycleManager) datasetLifecycleManager)
+                                .registerInactivePartitionIndex(localResource.getPath(), index);
                         datasetLifecycleManager.open(localResource.getPath());
                     }
                     LOGGER.log(Level.INFO, "REPL: " + Thread.currentThread().getName() + " Redoing " + logRecord

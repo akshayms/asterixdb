@@ -85,7 +85,7 @@ public class DatasetResource implements Comparable<DatasetResource> {
         return (iInfo == null) ? null : iInfo.getIndex();
     }
 
-    public void register(long resourceID, IIndex index) throws HyracksDataException {
+    public void register(long resourceID, IIndex index, int partition) throws HyracksDataException {
         if (!datasetInfo.isRegistered()) {
             synchronized (datasetInfo) {
                 if (!datasetInfo.isRegistered()) {
@@ -102,10 +102,12 @@ public class DatasetResource implements Comparable<DatasetResource> {
             throw new HyracksDataException("Attempt to register a null index");
         }
         datasetInfo.getIndexes()
-                .put(resourceID, new IndexInfo((ILSMIndex) index, datasetInfo.getDatasetID(), resourceID, true));
+                .put(resourceID, new IndexInfo((ILSMIndex) index, datasetInfo.getDatasetID(), resourceID, partition,
+        true));
     }
 
-    public void registerInactivePartitionIndex(long resourceID, IIndex index) throws HyracksDataException {
+    public void registerInactivePartitionIndex(long resourceID, IIndex index, int partition) throws
+            HyracksDataException {
         if (!datasetInfo.isRegistered()) {
             synchronized (datasetInfo) {
                 if (!datasetInfo.isRegistered()) {
@@ -122,7 +124,8 @@ public class DatasetResource implements Comparable<DatasetResource> {
             throw new HyracksDataException("Attempt to register a null index");
         }
         datasetInfo.getIndexes()
-                .put(resourceID, new IndexInfo((ILSMIndex) index, datasetInfo.getDatasetID(), resourceID, false));
+                .put(resourceID, new IndexInfo((ILSMIndex) index, datasetInfo.getDatasetID(), resourceID,
+                        partition, false));
     }
 
     public DatasetInfo getDatasetInfo() {

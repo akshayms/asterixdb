@@ -26,6 +26,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
+import com.sun.corba.se.pept.transport.ResponseWaitingRoom;
 import org.apache.asterix.common.api.IDatasetLifecycleManager;
 import org.apache.asterix.common.config.StorageProperties;
 import org.apache.asterix.common.exceptions.ACIDException;
@@ -95,11 +96,12 @@ public class DatasetLifecycleManager implements IDatasetLifecycleManager, ILifeC
         validateDatasetLifecycleManagerState();
         int did = getDIDfromResourcePath(resourcePath);
         long resourceID = getResourceIDfromResourcePath(resourcePath);
+        int partition = getPartitionIdFromResourcePath(resourcePath);
         DatasetResource datasetResource = datasets.get(did);
         if (datasetResource == null) {
             datasetResource = getDatasetLifecycle(did);
         }
-        datasetResource.register(resourceID, index);
+        datasetResource.register(resourceID, index, partition);
     }
 
     public synchronized void registerInactivePartitionIndex(String resourcePath, IIndex index) throws
@@ -107,11 +109,20 @@ public class DatasetLifecycleManager implements IDatasetLifecycleManager, ILifeC
         validateDatasetLifecycleManagerState();
         int did = getDIDfromResourcePath(resourcePath);
         long resourceID = getResourceIDfromResourcePath(resourcePath);
+        int partition = getPartitionIdFromResourcePath(resourcePath);
         DatasetResource datasetResource = datasets.get(did);
         if (datasetResource == null) {
             datasetResource = getDatasetLifecycle(did);
         }
-        datasetResource.registerInactivePartitionIndex(resourceID, index);
+        datasetResource.registerInactivePartitionIndex(resourceID, index, partition);
+    }
+
+    public int getPartitionIdFromResourcePath(String resourcePath) throws HyracksDataException {
+        LocalResource lr = resourceRepository.get(resourcePath);
+        if (lr == null) {
+            return -1;
+        }
+        return ((Resource) lr.getResource()).partition();
     }
 
     public int getDIDfromResourcePath(String resourcePath) throws HyracksDataException {

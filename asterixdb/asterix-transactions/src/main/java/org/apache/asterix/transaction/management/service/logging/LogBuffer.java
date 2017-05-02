@@ -44,7 +44,7 @@ import org.apache.hyracks.api.exceptions.HyracksDataException;
 
 public class LogBuffer implements ILogBuffer {
 
-    public static final boolean IS_DEBUG_MODE = true;//true
+    public static final boolean IS_DEBUG_MODE = false;//true
     private static final Logger LOGGER = Logger.getLogger(LogBuffer.class.getName());
     private final ITransactionSubsystem txnSubsystem;
     private final LogBufferTailReader logBufferTailReader;

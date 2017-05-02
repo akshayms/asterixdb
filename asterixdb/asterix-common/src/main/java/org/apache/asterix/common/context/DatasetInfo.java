@@ -20,10 +20,7 @@ package org.apache.asterix.common.context;
 
 import org.apache.hyracks.storage.am.lsm.common.api.ILSMIndex;
 
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 import java.util.stream.Collectors;
 
 public class DatasetInfo extends Info implements Comparable<DatasetInfo> {
@@ -84,6 +81,10 @@ public class DatasetInfo extends Info implements Comparable<DatasetInfo> {
         Set<ILSMIndex> datasetIndexes = getDatasetIndexes();
         datasetIndexes.remove(getActivePartitionIndexes());
         return datasetIndexes;
+    }
+
+    public synchronized List<IndexInfo> getReplicaParitionIndexList() {
+        return getIndexes().values().stream().filter(i -> !i.isActivePartitionIndex()).collect(Collectors.toList());
     }
 
     @Override public int compareTo(DatasetInfo i) {

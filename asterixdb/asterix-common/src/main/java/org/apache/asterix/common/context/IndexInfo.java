@@ -25,11 +25,13 @@ public class IndexInfo extends Info {
     private final long resourceId;
     private final int datasetId;
     private boolean isActivePartitionIndex;
+    private final int partitionId;
 
-    public IndexInfo(ILSMIndex index, int datasetId, long resourceId, boolean isActivePartitionIndex) {
+    public IndexInfo(ILSMIndex index, int datasetId, long resourceId, int partitionId, boolean isActivePartitionIndex) {
         this.index = index;
         this.datasetId = datasetId;
         this.resourceId = resourceId;
+        this.partitionId = partitionId;
         this.isActivePartitionIndex = isActivePartitionIndex;
     }
 
@@ -47,5 +49,18 @@ public class IndexInfo extends Info {
 
     public boolean isActivePartitionIndex() {
         return isActivePartitionIndex;
+    }
+
+    public int getPartitionId() { return partitionId; }
+
+    @Override
+    public String toString() {
+        StringBuilder sb = new StringBuilder();
+        sb.append("Index: ").append(index).append(" , ");
+        sb.append("Resource : ").append(resourceId).append(" , ");
+        sb.append("DatasetId: ").append(datasetId).append(" , ");
+        sb.append("PartitionId: ").append(partitionId).append(" , ");
+        sb.append("Active Partition Index: ").append(isActivePartitionIndex);
+        return sb.toString();
     }
 }
