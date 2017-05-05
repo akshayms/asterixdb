@@ -5,10 +5,10 @@ import org.apache.asterix.common.context.DatasetInfo;
 import org.apache.asterix.common.context.DatasetLifecycleManager;
 import org.apache.asterix.common.context.IndexInfo;
 import org.apache.asterix.common.exceptions.ACIDException;
-import org.apache.asterix.common.replication.IFaultToleranceStrategy;
+import org.apache.asterix.common.ioopcallbacks.AbstractLSMIOOperationCallback;
+import org.apache.asterix.common.replication.IReplicaResourcesManager;
 import org.apache.asterix.common.replication.IReplicationThread;
 import org.apache.asterix.common.transactions.*;
-import org.apache.asterix.runtime.utils.AppContextInfo;
 import org.apache.asterix.transaction.management.resource.PersistentLocalResourceRepository;
 import org.apache.hyracks.api.exceptions.HyracksDataException;
 import org.apache.hyracks.storage.am.common.api.IndexException;
@@ -24,7 +24,7 @@ import java.nio.ByteBuffer;
 import java.nio.channels.SocketChannel;
 import java.time.Duration;
 import java.time.Instant;
-import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -47,7 +47,7 @@ public class StreamingReplicationThread implements IReplicationThread {
     private Set<Integer> nodePartitions;
     private int numPartitions;
     private boolean replicationEnabled = true;
-    private List<Object> partitionMonitors;
+    private Map<Integer, Object> partitionMonitors;
 
     private static final int DEFAULT_SIZE = 20;
     private static final int DEFAULT_LOG_PAGE_SIZE = 15000;
@@ -60,25 +60,27 @@ public class StreamingReplicationThread implements IReplicationThread {
     private final IDatasetLifecycleManager datasetLifecycleManager;
     //private final List<AtomicInteger> counters;
     private final Object bufferFlipMonitor = new Object();
+    private IReplicaResourcesManager replicaResourcesManager;
 
     private Map<Long, LocalResource> resourceMap;
     private Map<Integer, Set<Integer>> jobResourcesMap;
     private static final Object resourceMapLock = new Object();
-    private IFaultToleranceStrategy ftStrategy;
 
     //public StreamingReplicationManager(ITransactionSubsystem txnSubSystem, IAppRuntimeContextProvider
     //asterixAppRuntimeContextProvider, MetadataProperties metadataProperties)
-    public StreamingReplicationThread(IAppRuntimeContextProvider appRuntimeContextProvider) {
+    public StreamingReplicationThread(IAppRuntimeContextProvider appRuntimeContextProvider,
+            IReplicaResourcesManager replicaResourcesManager) {
         //public StreamingReplicationThread(IReplicationChannel replicationChannel, SocketChannel socketChannel) {
+        this.replicaResourcesManager = replicaResourcesManager;
         this.partitionReplicationQs = new ConcurrentHashMap<>();
         this.txnSubSystem = appRuntimeContextProvider.getTransactionSubsystem();
-        this.nodePartitions = appRuntimeContextProvider.getAppContext().getMetadataProperties().getClusterPartitions()
-                .keySet();
+        this.localResourceRepository = txnSubSystem.getAsterixAppRuntimeContextProvider().getLocalResourceRepository();
+        this.nodePartitions = ((PersistentLocalResourceRepository) localResourceRepository).getInactivePartitions();
         this.numPartitions = nodePartitions.size();
         this.partitionWriteBuffer = new ConcurrentHashMap<>();
-        this.partitionMonitors = new ArrayList<>();
+        this.partitionMonitors = new HashMap<>();
         this.freeBufferQ = new LinkedBlockingQueue<>();
-        this.localResourceRepository = txnSubSystem.getAsterixAppRuntimeContextProvider().getLocalResourceRepository();
+
         //this.nodePartitions = ((PersistentLocalResourceRepository) localResourceRepository).getInactivePartitions();
         nodePartitions.stream().forEach(partitionId -> {
             // 3 buffers to start out with per partition on average.
@@ -86,7 +88,7 @@ public class StreamingReplicationThread implements IReplicationThread {
             freeBufferQ.offer(ByteBuffer.allocate(DEFAULT_LOG_PAGE_SIZE));
             partitionWriteBuffer.put(partitionId, ByteBuffer.allocate(DEFAULT_LOG_PAGE_SIZE));
             partitionReplicationQs.put(partitionId, new LinkedBlockingQueue<>(MAX_QUEUE_LENGTH));
-            partitionMonitors.add(new Object());
+            partitionMonitors.put(partitionId, new Object());
         });
         freeBufferQ.offer(ByteBuffer.allocate(DEFAULT_LOG_PAGE_SIZE));
         freeBufferQ.offer(ByteBuffer.allocate(DEFAULT_LOG_PAGE_SIZE));
@@ -103,7 +105,6 @@ public class StreamingReplicationThread implements IReplicationThread {
         } catch (HyracksDataException e) {
             e.printStackTrace();
         }
-        this.ftStrategy = AppContextInfo.INSTANCE.getFaultToleranceStrategy();
     }
 
     @Override public void run() {
@@ -154,8 +155,6 @@ public class StreamingReplicationThread implements IReplicationThread {
         int datasetId = logRecord.getDatasetId();
         DatasetInfo dsInfo = datasetLifecycleManager.getDatasetInfo(datasetId);
         List<IndexInfo> inactiveIndexes = dsInfo.getReplicaParitionIndexList();
-        //        ClusterPartition[] partitions = ClusterStateManager.INSTANCE.getNodePartitions(sourceNode);
-
         // get all partition ids that are active on the source node.
         // flush the partition write buffer to the materialization thread
         for (int remoteActivePartition : remoteNodePartitions) {
@@ -188,15 +187,37 @@ public class StreamingReplicationThread implements IReplicationThread {
     public void bufferCopy(ILogRecord logRecord) throws InterruptedException {
         int partitionId = logRecord.getResourcePartition();
         int logSize = logRecord.getRemoteLogSize(); // TODO: logSize or remoteLogSize?
-        synchronized (partitionMonitors.get(partitionId)) {
-            ByteBuffer writeBuffer = partitionWriteBuffer.get(partitionId);
-            if (writeBuffer.remaining() < logSize) {
-                LOGGER.log(Level.INFO, "REPL: RP" + partitionId + " write buffer is full, flushing it to Q");
-                flushWriteBufferToQ(partitionId);
-                writeBuffer = partitionWriteBuffer.get(partitionId);
+        if (logRecord.getLogType() == LogType.UPDATE) {
+            synchronized (partitionMonitors.get(partitionId)) {
+                copyToPartitionWriteBuffer(logRecord, partitionId, logSize);
             }
-            logRecord.writeRemoteLogRecord(writeBuffer);
+        } else if (logRecord.getLogType() == LogType.FLUSH) {
+            for (int partition : nodePartitions) {
+                synchronized (partitionMonitors.get(partitionId)) {
+                    copyToPartitionWriteBuffer(logRecord, partition, logRecord.getLogSize());
+                }
+            }
+        }
+    }
+
+    private void copyToPartitionWriteBuffer(ILogRecord logRecord, int partitionId, int logSize)
+            throws InterruptedException {
+        ByteBuffer writeBuffer = partitionWriteBuffer.get(partitionId);
+        if (writeBuffer == null) {
+            // should never reach this call. TODO: remove after testing
+            return;
+        }
+        if (writeBuffer.remaining() < logSize) {
+            LOGGER.log(Level.INFO, "REPL: RP" + partitionId + " write buffer is full, flushing it to Q");
+            flushWriteBufferToQ(partitionId);
+            writeBuffer = partitionWriteBuffer.get(partitionId);
+        }
+        logRecord.writeRemoteLogRecord(writeBuffer);
+        try {
             partitionMonitors.get(partitionId).notify();
+        } catch (Exception e) {
+
+            return; // TODO: remove this
         }
     }
 
@@ -204,7 +225,7 @@ public class StreamingReplicationThread implements IReplicationThread {
         return partitionWriteBuffer.get(resourcePartition);
     }
 
-    public synchronized void submit(ILogRecord logRecord) {
+    public void submit(ILogRecord logRecord) {
         try {
             bufferCopy(logRecord);
         } catch (InterruptedException e) {
@@ -269,20 +290,6 @@ public class StreamingReplicationThread implements IReplicationThread {
             Thread.currentThread().setName(name);
             while (true) {
                 try {
-                    //                    synchronized (partitionMonitors.get(partition)) {
-                    //                        while (jobQ.isEmpty()) {
-                    //                            LOGGER.log(Level.INFO, "REPL: " + name + " waiting because jobQ is empty");
-                    //                            partitionMonitors.get(partition).wait();
-                    //                            LOGGER.log(Level.INFO, "REPL: " + name + ": Requesting a flush");
-                    //                            if (!flushWriteBufferToQ(partition)) {
-                    //                                LOGGER.log(Level.INFO, "REPL:" + name + ": Flush buffer failed for thread because of empty buffer");
-                    //                                continue;
-                    //                            } else {
-                    //                                LOGGER.log(Level.INFO, "REPL: " + name + ": Successful buffer switch");
-                    //                                break;
-                    //                            }
-                    //                        }
-                    //                    }
                     buffer = jobQ.take();
                     int counter = 0;
                     Instant start = Instant.now();
@@ -357,9 +364,53 @@ public class StreamingReplicationThread implements IReplicationThread {
                     // TODO: change this to a catch all exception?
                     e.printStackTrace();
                 }
-            } else {
-                LOGGER.info("REPl: Unexpected log type: " + logRecord.getLogRecordForDisplay());
+            } else if (logRecord.getLogType() == LogType.FLUSH) {
+                try {
+                    flushDataset(logRecord, replicaResourcesManager.getRemoteNodePartitions(logRecord.getNodeId()));
+                } catch (InterruptedException e) {
+                    // Handle this case
+                    e.printStackTrace();
+                } catch (HyracksDataException e) {
+                    // Handle this case
+                    e.printStackTrace();
+                }
             }
+        }
+
+        public void flushDataset(ILogRecord logRecord, Set<Integer> remoteNodePartitions)
+                throws InterruptedException, HyracksDataException {
+            String sourceNode = logRecord.getNodeId();
+            int datasetId = logRecord.getDatasetId();
+            DatasetInfo dsInfo = datasetLifecycleManager.getDatasetInfo(datasetId);
+            List<IndexInfo> inactiveIndexes = dsInfo.getReplicaParitionIndexList();
+            // get all partition ids that are active on the source node.
+            // flush the partition write buffer to the materialization thread
+            //            for (int remoteActivePartition : remoteNodePartitions) {
+            //                flushWriteBufferToQ(remoteActivePartition);
+            //            }
+
+            // retain only those indexes whose partitions are hosted & active on sourceNode
+            inactiveIndexes = inactiveIndexes.stream()
+                    .filter(index -> remoteNodePartitions.contains(index.getPartitionId()))
+                    .collect(Collectors.toList());
+            LOGGER.info("Indexes to schedule a flush: " + inactiveIndexes);
+            //            Thread.sleep(1000); // this is not required.
+
+            // Get all the inactive partitions to have the same state as the primary by flushing its job queues.
+            for (IndexInfo indexInfo : inactiveIndexes) {
+                if (indexInfo.getPartitionId() == partition) {
+                    ILSMIndexAccessor accessor = indexInfo.getIndex()
+                            .createAccessor(NoOpOperationCallback.INSTANCE, NoOpOperationCallback.INSTANCE);
+
+                    AbstractLSMIOOperationCallback ioOpCallback = (AbstractLSMIOOperationCallback) indexInfo.getIndex()
+                            .getIOOperationCallback();
+                    long localAppendLSN = txnSubSystem.getLogManager().getAppendLSN();
+                    LOGGER.info("Setting local LSN of the flushed index " + indexInfo + " to " + localAppendLSN);
+                    ioOpCallback.updateLastLSN(localAppendLSN);
+                    accessor.scheduleFlush(indexInfo.getIndex().getIOOperationCallback());
+                }
+            }
+            LOGGER.info("Flushing complete!");
         }
     }
 }

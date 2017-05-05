@@ -81,11 +81,6 @@
       <artifactId>hyracks-storage-am-common</artifactId>
       <version>0.3.1-SNAPSHOT</version>
     </dependency>
-    <dependency>
-      <groupId>org.apache.asterix</groupId>
-      <artifactId>asterix-runtime</artifactId>
-      <version>0.9.1-SNAPSHOT</version>
-    </dependency>
   </dependencies>
 
 </project>

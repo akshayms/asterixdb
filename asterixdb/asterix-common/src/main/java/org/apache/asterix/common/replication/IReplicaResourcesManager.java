@@ -27,4 +27,7 @@ public interface IReplicaResourcesManager {
      * @return the minimum LSN of all indexes that belong to {@code partitions}.
      */
     public long getPartitionsMinLSN(Set<Integer> partitions);
+
+
+    Set<Integer> getRemoteNodePartitions(String replicaId);
 }

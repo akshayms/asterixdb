@@ -104,7 +104,7 @@ public class ReplicationChannel extends AbstractReplicationChannel {
         replicaUniqueLSN2RemoteMapping = new ConcurrentHashMap<>();
         lsmComponentLSNMappingService = new LSMComponentsSyncService();
         replicationNotifier = new ReplicationNotifier();
-        this.streamingReplicationThread = new StreamingReplicationThread(appContextProvider);
+        this.streamingReplicationThread = new StreamingReplicationThread(appContextProvider, replicaResoucesManager);
     }
 
     public StreamingReplicationThread getStreamingReplicationThread() {

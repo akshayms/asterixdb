@@ -59,7 +59,7 @@ public class StreamingReplicationChannel extends AbstractReplicationChannel {
             INCServiceContext ncServiceContext, IAppRuntimeContextProvider asterixAppRuntimeContextProvider) {
         super(nodeId, replicationProperties, logManager, replicaResoucesManager, replicationManager,
                 ncServiceContext, asterixAppRuntimeContextProvider);
-        this.streamingReplicationThread = new StreamingReplicationThread(appContextProvider);
+        this.streamingReplicationThread = new StreamingReplicationThread(appContextProvider, replicaResoucesManager);
         this.inBuffer = ByteBuffer.allocate(StorageUtil.getIntSizeInBytes(4, StorageUtil.StorageUnit.KILOBYTE));
     }
 

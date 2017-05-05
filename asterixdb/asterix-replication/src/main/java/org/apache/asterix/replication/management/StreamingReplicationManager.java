@@ -258,10 +258,13 @@ public class StreamingReplicationManager extends AbstractReplicationManager {
                     throw new IOException("No ack from replica!");
                 }
                 closeReplicaSockets(replicaSockets);
+
             }
         } catch (HyracksDataException e) {
+            LOGGER.severe("Failed to execute replication job " + job);
             e.printStackTrace();
         } catch (IOException e) {
+            LOGGER.severe("IOException while trying to create index file job: " + job);
             e.printStackTrace();
         }
         finally {

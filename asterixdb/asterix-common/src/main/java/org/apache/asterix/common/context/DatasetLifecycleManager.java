@@ -319,7 +319,7 @@ public class DatasetLifecycleManager implements IDatasetLifecycleManager, ILifeC
         List<IndexInfo> openIndexesInfo = new ArrayList<>();
         for (DatasetResource dsr : datasets.values()) {
             for (IndexInfo iInfo : dsr.getIndexes().values()) {
-                if (iInfo.isOpen()) {
+                if (iInfo.isOpen() && iInfo.isActivePartitionIndex()) {
                     openIndexesInfo.add(iInfo);
                 }
             }
@@ -380,19 +380,19 @@ public class DatasetLifecycleManager implements IDatasetLifecycleManager, ILifeC
             PrimaryIndexOperationTracker opTracker = dsr.getOpTracker();
             synchronized (opTracker) {
                 for (IndexInfo iInfo : dsr.getIndexes().values()) {
-                    AbstractLSMIOOperationCallback ioCallback = (AbstractLSMIOOperationCallback) iInfo.getIndex()
-                            .getIOOperationCallback();
-                    if (!(((AbstractLSMIndex) iInfo.getIndex()).isCurrentMutableComponentEmpty()
-                            || ioCallback.hasPendingFlush() || opTracker.isFlushLogCreated()
-                            || opTracker.isFlushOnExit())) {
-                        long firstLSN = ioCallback.getFirstLSN();
-                        if (firstLSN < targetLSN) {
-                            opTracker.setFlushOnExit(true);
-                            if (opTracker.getNumActiveOperations() == 0) {
-                                // No Modify operations currently, we need to trigger the flush and we can do so safely
-                                opTracker.flushIfRequested();
+                    if (iInfo.isActivePartitionIndex()) { // TODO: Check this!
+                        AbstractLSMIOOperationCallback ioCallback = (AbstractLSMIOOperationCallback) iInfo.getIndex().getIOOperationCallback();
+                        if (!(((AbstractLSMIndex) iInfo.getIndex()).isCurrentMutableComponentEmpty() || ioCallback.hasPendingFlush() || opTracker.isFlushLogCreated()
+                                || opTracker.isFlushOnExit())) {
+                            long firstLSN = ioCallback.getFirstLSN();
+                            if (firstLSN < targetLSN) {
+                                opTracker.setFlushOnExit(true);
+                                if (opTracker.getNumActiveOperations() == 0) {
+                                    // No Modify operations currently, we need to trigger the flush and we can do so safely
+                                    opTracker.flushIfRequested();
+                                }
+                                break;
                             }
-                            break;
                         }
                     }
                 }

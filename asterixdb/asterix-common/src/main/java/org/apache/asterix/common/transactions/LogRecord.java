@@ -467,6 +467,10 @@ public class LogRecord implements ILogRecord {
         if (logType == LogType.UPDATE) {
             builder.append(" ResourceId : ").append(resourceId);
         }
+        if (logType == LogType.FLUSH) {
+            builder.append(" Number of flushed indexes: ").append(numOfFlushedIndexes);
+            builder.append(" NodeID:").append(nodeId);
+        }
         return builder.toString();
     }
 

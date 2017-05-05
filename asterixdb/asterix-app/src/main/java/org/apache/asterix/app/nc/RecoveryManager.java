@@ -459,6 +459,7 @@ public class RecoveryManager implements IRecoveryManager, ILifeCycleComponent {
                 AbstractLSMIOOperationCallback ioCallback =
                         (AbstractLSMIOOperationCallback) ((ILSMIndex) index).getIOOperationCallback();
                 if (!((AbstractLSMIndex) index).isCurrentMutableComponentEmpty() || ioCallback.hasPendingFlush()) {
+//                if (ioCallback.hasPendingFlush()) {
                     firstLSN = ioCallback.getFirstLSN();
                     minFirstLSN = Math.min(minFirstLSN, firstLSN);
                 }

@@ -370,23 +370,26 @@ public class PassiveReplicationThread implements IReplicationThread {
                     break;
                 case LogType.FLUSH:
                     //store mapping information for flush logs to use them in incoming LSM components.
-                    LOGGER.info("Flush log: " + remoteLog.getLogRecordForDisplay());
+                    //LOGGER.info("Flush log: " + remoteLog.getLogRecordForDisplay());
                     RemoteLogMapping flushLogMap = new RemoteLogMapping();
                     flushLogMap.setRemoteNodeID(remoteLog.getNodeId());
                     flushLogMap.setRemoteLSN(remoteLog.getLSN());
                     replicationChannel.getLogManager().log(remoteLog);
 
-                    LOGGER.info("Requesting a flush of a remote primary");
-                    try {
-                        Set<Integer> replicaPartitions = ((ReplicaResourcesManager)replicationChannel
-                                .getReplicaResourcesManager()).getRemoteNodePartitions(remoteLog.getNodeId());
-                        replicationChannel.streamingReplicationThread.flushDataset(remoteLog, replicaPartitions);
-                    } catch (InterruptedException | HyracksDataException e) {
-                        LOGGER.info("Unexpected error during flush request!");
-                        e.printStackTrace();
-                    }
+                    LOGGER.info("Requesting a flush of a remote primary. Log: " + remoteLog.getLogRecordForDisplay());
+//                    try {
+//                        Set<Integer> replicaPartitions = ((ReplicaResourcesManager)replicationChannel
+//                                .getReplicaResourcesManager()).getRemoteNodePartitions(remoteLog.getNodeId());
+//                        replicationChannel.streamingReplicationThread.flushDataset(remoteLog, replicaPartitions);
+//                    } catch (InterruptedException | HyracksDataException e) {
+//                        LOGGER.info("Unexpected error during flush request!");
+//                        e.printStackTrace();
+//                    }
 
                     //the log LSN value is updated by logManager.log(.) to a local value
+
+                    replicationChannel.streamingReplicationThread.submit(remoteLog);
+
                     flushLogMap.setLocalLSN(remoteLog.getLSN());
                     flushLogMap.numOfFlushedIndexes.set(remoteLog.getNumOfFlushedIndexes());
                     replicationChannel.replicaUniqueLSN2RemoteMapping.put(flushLogMap.getNodeUniqueLSN(), flushLogMap);

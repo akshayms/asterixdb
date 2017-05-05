@@ -132,6 +132,7 @@ public class ReplicaResourcesManager implements IReplicaResourcesManager {
         return remoteIndexesPaths;
     }
 
+    @Override
     public Set<Integer> getRemoteNodePartitions(String replicaId) {
         ClusterPartition[] partitions = nodePartitions.get(replicaId);
         Set<Integer> remotePartitions = new HashSet<>();
