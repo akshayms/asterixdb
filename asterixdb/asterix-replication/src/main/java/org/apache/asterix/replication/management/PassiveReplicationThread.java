@@ -355,8 +355,12 @@ public class PassiveReplicationThread implements IReplicationThread {
                     //if the log partition belongs to a partitions hosted on this node, replicate it
                     if (replicationChannel.nodeHostedPartitions.contains(remoteLog.getResourcePartition())) {
                         replicationChannel.getLogManager().log(remoteLog);
-                        LOGGER.info("Persisting log: " + remoteLog.getLogRecordForDisplay());
-                        replicationChannel.streamingReplicationThread.submit(remoteLog);
+                        //LOGGER.info("Persisting log: " + remoteLog.getLogRecordForDisplay());
+                        try {
+                            replicationChannel.streamingReplicationThread.submit(remoteLog);
+                        } catch (InterruptedException e) {
+                            e.printStackTrace();
+                        }
                     }
                     break;
                 case LogType.JOB_COMMIT:
@@ -388,7 +392,11 @@ public class PassiveReplicationThread implements IReplicationThread {
 
                     //the log LSN value is updated by logManager.log(.) to a local value
 
-                    replicationChannel.streamingReplicationThread.submit(remoteLog);
+                    try {
+                        replicationChannel.streamingReplicationThread.submit(remoteLog);
+                    } catch (InterruptedException e) {
+                        e.printStackTrace();
+                    }
 
                     flushLogMap.setLocalLSN(remoteLog.getLSN());
                     flushLogMap.numOfFlushedIndexes.set(remoteLog.getNumOfFlushedIndexes());

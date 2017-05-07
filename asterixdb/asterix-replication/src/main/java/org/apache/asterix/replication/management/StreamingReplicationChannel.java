@@ -152,7 +152,11 @@ public class StreamingReplicationChannel extends AbstractReplicationChannel {
                             if (DEBUG_MODE) {
                                 LOGGER.info("Inserting into replica: " + remoteLog.getPKHashValue());
                             }
-                            streamingReplicationThread.submit(remoteLog);
+                            try {
+                                streamingReplicationThread.submit(remoteLog);
+                            } catch (InterruptedException e) {
+                                e.printStackTrace();
+                            }
                         }
                         break;
                     case LogType.JOB_COMMIT:
@@ -160,7 +164,7 @@ public class StreamingReplicationChannel extends AbstractReplicationChannel {
                         LogRecord jobTerminationLog = new LogRecord();
                         TransactionUtil.formJobTerminateLogRecord(jobTerminationLog, remoteLog.getJobId(),
                                 remoteLog.getLogType() == LogType.JOB_COMMIT);
-                        jobTerminationLog.setReplicationThread(streamingReplicationThread);
+                        //jobTerminationLog.setReplicationThread(streamingReplicationThread);
                         jobTerminationLog.setLogSource(LogSource.REMOTE);
                         getLogManager().log(jobTerminationLog);
                         break;
