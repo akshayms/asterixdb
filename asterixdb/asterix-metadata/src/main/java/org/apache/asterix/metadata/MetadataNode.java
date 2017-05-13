@@ -118,6 +118,7 @@ import org.apache.hyracks.storage.am.common.ophelpers.IndexOperation;
 import org.apache.hyracks.storage.am.common.ophelpers.MultiComparator;
 import org.apache.hyracks.storage.am.lsm.common.api.ILSMIndex;
 import org.apache.hyracks.storage.am.lsm.common.api.ILSMIndexAccessor;
+import org.apache.hyracks.storage.am.lsm.common.api.LSMOperationType;
 import org.apache.hyracks.storage.am.lsm.common.impls.AbstractLSMIndex;
 
 public class MetadataNode implements IMetadataNode {
@@ -429,6 +430,8 @@ public class MetadataNode implements IMetadataNode {
 
             // TODO: fix exceptions once new BTree exception model is in hyracks.
             indexAccessor.forceInsert(tuple);
+            lsmIndex.getOperationTracker().completeOperation(lsmIndex, LSMOperationType.FORCE_MODIFICATION, null,
+                    modCallback);
         } finally {
             datasetLifecycleManager.close(resourceName);
         }
@@ -698,6 +701,8 @@ public class MetadataNode implements IMetadataNode {
             LSMIndexUtil.checkAndSetFirstLSN((AbstractLSMIndex) lsmIndex, transactionSubsystem.getLogManager());
 
             indexAccessor.forceDelete(tuple);
+            lsmIndex.getOperationTracker().completeOperation(lsmIndex, LSMOperationType.FORCE_MODIFICATION, null,
+                    modCallback);
         } finally {
             datasetLifecycleManager.close(resourceName);
         }

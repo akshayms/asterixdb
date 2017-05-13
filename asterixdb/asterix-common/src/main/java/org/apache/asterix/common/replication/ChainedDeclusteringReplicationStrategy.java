@@ -91,8 +91,10 @@ public class ChainedDeclusteringReplicationStrategy implements IReplicationStrat
         int nodeIndex = ClusterProperties.INSTANCE.getNodeIndex(nodeId);
 
         //find nodes to the left of this node
+        int i = 1;
+        int clusterSize = cluster.getNode().size();
         while (clientReplicas.size() != remotePrimaryReplicasCount) {
-            clientReplicas.add(new Replica(cluster.getNode().get(Math.abs(--nodeIndex % cluster.getNode().size()))));
+            clientReplicas.add(new Replica(cluster.getNode().get((nodeIndex + clusterSize - i++) % clusterSize)));
         }
 
         return clientReplicas;

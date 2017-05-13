@@ -355,10 +355,10 @@ public class PassiveReplicationThread implements IReplicationThread {
                     //if the log partition belongs to a partitions hosted on this node, replicate it
                     if (replicationChannel.nodeHostedPartitions.contains(remoteLog.getResourcePartition())) {
                         replicationChannel.getLogManager().log(remoteLog);
-                        //LOGGER.info("Persisting log: " + remoteLog.getLogRecordForDisplay());
+//                        LOGGER.info("Persisting log: " + remoteLog.getLogRecordForDisplay());
                         try {
                             replicationChannel.streamingReplicationThread.submit(remoteLog);
-                        } catch (InterruptedException e) {
+                        } catch (Exception e) {
                             e.printStackTrace();
                         }
                     }
@@ -378,7 +378,7 @@ public class PassiveReplicationThread implements IReplicationThread {
                     RemoteLogMapping flushLogMap = new RemoteLogMapping();
                     flushLogMap.setRemoteNodeID(remoteLog.getNodeId());
                     flushLogMap.setRemoteLSN(remoteLog.getLSN());
-                    replicationChannel.getLogManager().log(remoteLog);
+                    // replicationChannel.getLogManager().log(remoteLog); // TODO: CHECK!
 
                     LOGGER.info("Requesting a flush of a remote primary. Log: " + remoteLog.getLogRecordForDisplay());
 //                    try {

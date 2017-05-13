@@ -72,6 +72,7 @@ public class PreparePartitionsFailbackRequestMessage extends AbstractFailbackPla
 
     @Override
     public void handle(IControllerService cs) throws HyracksDataException, InterruptedException {
+        LOGGER.info("Handling failback request message: " + this);
         IAppRuntimeContext appContext = (IAppRuntimeContext) cs.getApplicationContext();
         INCMessageBroker broker = (INCMessageBroker) cs.getContext().getMessageBroker();
         /**
@@ -100,6 +101,8 @@ public class PreparePartitionsFailbackRequestMessage extends AbstractFailbackPla
         PersistentLocalResourceRepository localResourceRepo =
                 (PersistentLocalResourceRepository) appContext.getLocalResourceRepository();
         for (Integer partitionId : partitions) {
+            LOGGER.info("Adding inactive partition because of FailbackRequestMessage " + partitionId + " nodeID " +
+                    nodeID);
             localResourceRepo.addInactivePartition(partitionId);
         }
 

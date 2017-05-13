@@ -118,6 +118,9 @@ public class ClusterStateManager implements IClusterStateManager {
         metadataNodeActive = active;
         if (active) {
             LOGGER.info(String.format("Metadata node %s is now active", currentMetadataNode));
+        } else
+        {
+            LOGGER.info(String.format("Metadata node %s is now inactive", currentMetadataNode));
         }
     }
 

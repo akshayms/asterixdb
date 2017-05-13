@@ -257,9 +257,9 @@ public class StreamingReplicationManager extends AbstractReplicationManager {
                 if (responseType != ReplicationProtocol.ReplicationRequestType.ACK) {
                     throw new IOException("No ack from replica!");
                 }
-                closeReplicaSockets(replicaSockets);
-
+                requestBuffer.rewind();
             }
+            closeReplicaSockets(replicaSockets);
         } catch (HyracksDataException e) {
             LOGGER.severe("Failed to execute replication job " + job);
             e.printStackTrace();
@@ -688,7 +688,6 @@ public class StreamingReplicationManager extends AbstractReplicationManager {
     private void closeReplicaSockets(Map<String, SocketChannel> replicaSockets) {
         //send goodbye
         ByteBuffer goodbyeBuffer = ReplicationProtocol.getGoodbyeBuffer();
-        sendRequest(replicaSockets, goodbyeBuffer);
 
         Iterator<Map.Entry<String, SocketChannel>> iterator = replicaSockets.entrySet().iterator();
         while (iterator.hasNext()) {

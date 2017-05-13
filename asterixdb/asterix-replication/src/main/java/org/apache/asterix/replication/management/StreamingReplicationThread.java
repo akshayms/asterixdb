@@ -77,6 +77,7 @@ public class StreamingReplicationThread implements Runnable {
     private void startReplayThreads() {
         ExecutorService service = Executors.newFixedThreadPool(nodePartitions.size());
         for (int partition : nodePartitions) {
+            LOGGER.info("Starting replay thread for " + partition);
             partitionReplayThreadMap.put(partition, new LogReplayThread(partition));
         }
         partitionReplayThreadMap.values().forEach(service::submit);
@@ -171,6 +172,7 @@ public class StreamingReplicationThread implements Runnable {
         @Override public void run() {
             String name = "RMT-" + partition;
             Thread.currentThread().setName(name);
+            boolean flushLog = false;
             while (true) {
                 try {
                     synchronized (this) {
@@ -194,8 +196,8 @@ public class StreamingReplicationThread implements Runnable {
                     while (remoteLogBufferPage.hasRemaining()) {
                         logRecord.readRemoteLog(remoteLogBufferPage);
                         counter++;
-                        LOGGER.log(Level.INFO,
-                                "REPL: " + name + " : read log record " + logRecord.getLogRecordForDisplay());
+//                        LOGGER.log(Level.INFO,
+//                                "REPL: " + name + " : read log record " + logRecord.getLogRecordForDisplay());
                         try {
                             materialize();
                         } catch (Exception e) {
@@ -203,10 +205,8 @@ public class StreamingReplicationThread implements Runnable {
                         }
                     }
                     Instant end = Instant.now();
-                    LOGGER.log(Level.INFO,
-                            "REPL: STATS: " + name + " Num Logs in prev remoteLogBufferPage: " + counter + " JOBQ "
-                                    + "has" + jobQ.size() + " buffers waiting! and time to complete " + Duration
-                                    .between(start, end).toMillis());
+                    LOGGER.info("LogReplay: Thread " + name + " inserted " + counter + " records in " + Duration
+                                    .between(start, end).toMillis() + "ms. Backlog size: " + jobQ.size());
                     remoteLogBufferPage.clear();
                     emptyQ.offer(remoteLogBufferPage);
                 } catch (InterruptedException e) {
@@ -253,7 +253,7 @@ public class StreamingReplicationThread implements Runnable {
                         LOGGER.log(Level.SEVERE, "Unknown Optype to replicate");
                     }
                 } catch (HyracksDataException e) {
-                    LOGGER.log(Level.SEVERE, "Replicating a record failed");
+                    LOGGER.log(Level.SEVERE, "Replicating a record failed " + logRecord.getLogRecordForDisplay());
                 } catch (IndexException e) {
                     // TODO: change this to a catch all exception?
                     LOGGER.severe("Could not replay remote index modification");

@@ -70,7 +70,6 @@ import org.apache.asterix.metadata.api.IMetadataNode;
 import org.apache.asterix.metadata.bootstrap.MetadataBootstrap;
 import org.apache.asterix.replication.management.ReplicationChannel;
 import org.apache.asterix.replication.management.ReplicationManager;
-import org.apache.asterix.replication.management.StreamingReplicationChannel;
 import org.apache.asterix.replication.management.StreamingReplicationManager;
 import org.apache.asterix.replication.recovery.RemoteRecoveryManager;
 import org.apache.asterix.replication.storage.ReplicaResourcesManager;
@@ -238,10 +237,14 @@ public class NCAppRuntimeContext implements IAppRuntimeContext {
              */
             //get nodes which replicate to this node
             Set<String> remotePrimaryReplicas = replicationProperties.getRemotePrimaryReplicasIds(nodeId);
+
+            LOGGER.info("Remote primary replicas for this node: " + remotePrimaryReplicas);
             for (String clientId : remotePrimaryReplicas) {
                 //get the partitions of each client
                 ClusterPartition[] clientPartitions = metadataProperties.getNodePartitions().get(clientId);
                 for (ClusterPartition partition : clientPartitions) {
+                    LOGGER.info("Adding inactive partition: " + partition.getPartitionId() + " , active client " +
+                            clientId);
                     localResourceRepository.addInactivePartition(partition.getPartitionId());
                 }
             }
