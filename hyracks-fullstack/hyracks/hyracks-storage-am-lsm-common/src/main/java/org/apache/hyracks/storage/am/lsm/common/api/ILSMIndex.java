@@ -133,4 +133,9 @@ public interface ILSMIndex extends IIndex {
      * @return true if the index is durable. Otherwise false.
      */
     boolean isDurable();
+
+    boolean isInactivePartitionIndex();
+
+    void setInactivePartitionIndex(boolean active);
+
 }

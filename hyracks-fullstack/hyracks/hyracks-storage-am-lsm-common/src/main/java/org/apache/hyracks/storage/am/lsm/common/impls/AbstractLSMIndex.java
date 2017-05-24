@@ -79,6 +79,8 @@ public abstract class AbstractLSMIndex implements ILSMIndex {
     protected final AtomicBoolean[] flushRequests;
     protected boolean memoryComponentsAllocated = false;
 
+    protected boolean isInactivePartitionIndex = false;
+
     public AbstractLSMIndex(IIOManager ioManager, List<IVirtualBufferCache> virtualBufferCaches,
             IBufferCache diskBufferCache, ILSMIndexFileManager fileManager, IFileMapProvider diskFileMapProvider,
             double bloomFilterFalsePositiveRate, ILSMMergePolicy mergePolicy, ILSMOperationTracker opTracker,
@@ -317,5 +319,19 @@ public abstract class AbstractLSMIndex implements ILSMIndex {
     @Override
     public List<ILSMMemoryComponent> getMemoryComponents() {
         return memoryComponents;
+    }
+
+    @Override
+    public boolean isInactivePartitionIndex() {
+        return isInactivePartitionIndex;
+    }
+
+    @Override
+    public void setInactivePartitionIndex(boolean active) {
+        this.isInactivePartitionIndex = active;
+    }
+
+    public ILSMHarness getLsmHarness() {
+        return lsmHarness;
     }
 }

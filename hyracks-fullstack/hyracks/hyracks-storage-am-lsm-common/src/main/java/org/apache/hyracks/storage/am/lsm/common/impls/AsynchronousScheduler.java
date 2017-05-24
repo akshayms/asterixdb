@@ -28,6 +28,7 @@ import java.util.concurrent.SynchronousQueue;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
+import java.util.logging.Logger;
 
 import org.apache.hyracks.api.exceptions.HyracksDataException;
 import org.apache.hyracks.storage.am.lsm.common.api.ILSMIOOperation;
@@ -42,6 +43,8 @@ public class AsynchronousScheduler implements ILSMIOOperationScheduler {
     private ExecutorService executor;
     private final Map<String, ILSMIOOperation> runningFlushOperations = new HashMap<String, ILSMIOOperation>();
     private final Map<String, PriorityQueue<ILSMIOOperation>> waitingFlushOperations = new HashMap<String, PriorityQueue<ILSMIOOperation>>();
+
+    private final static Logger LOGGER = Logger.getLogger(AsynchronousScheduler.class.getName());
 
     public void init(ThreadFactory threadFactory) {
         // Creating an executor with the same configuration of Executors.newCachedThreadPool.
@@ -85,6 +88,7 @@ public class AsynchronousScheduler implements ILSMIOOperationScheduler {
             executor.submit(operation);
         } else {
             String id = operation.getIndexUniqueIdentifier();
+            //LOGGER.info("Scheduling Flush: " + id);
             synchronized (executor) {
                 if (runningFlushOperations.containsKey(id)) {
                     if (waitingFlushOperations.containsKey(id)) {

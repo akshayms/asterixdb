@@ -115,4 +115,43 @@
     <value>INFO</value>
     <description>foo</description>
   </property>
+
+  <!-- custom -->
+  <!-- custom --><!-- custom -->
+  <!-- custom -->
+
+  <property>
+    <name>txn.log.partitionsize</name>
+    <value>2GB</value>
+    <description>The maximum size of a log file partition allowed before
+      rotating the log to the next partition. (Default = "2147483648" //
+      2GB)
+    </description>
+  </property>
+
+  <property>
+    <name>txn.log.checkpoint.lsnthreshold</name>
+    <value>4194304</value>
+    <description>The size of the window that the maximum LSN is allowed to
+      be ahead of the checkpoint LSN by. (Default = ""67108864" // 64M)
+    </description>
+  </property>
+
+  <property>
+    <name>txn.log.checkpoint.pollfrequency</name>
+    <value>120</value>
+    <description>The time in seconds between that the checkpoint thread
+      waits between polls. (Default = "120" // 120s)
+    </description>
+  </property>
+
+  <property>
+    <name>txn.log.checkpoint.history</name>
+    <value>0</value>
+    <description>The number of old log partition files to keep before
+      discarding. (Default = "0")
+    </description>
+  </property>
+
+
 </asterixConfiguration>

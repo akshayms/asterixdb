@@ -4,6 +4,7 @@ import org.apache.asterix.common.api.IDatasetLifecycleManager;
 import org.apache.asterix.common.context.DatasetInfo;
 import org.apache.asterix.common.context.DatasetLifecycleManager;
 import org.apache.asterix.common.context.IndexInfo;
+import org.apache.asterix.common.context.PrimaryIndexOperationTracker;
 import org.apache.asterix.common.ioopcallbacks.AbstractLSMIOOperationCallback;
 import org.apache.asterix.common.replication.IReplicaResourcesManager;
 import org.apache.asterix.common.transactions.*;
@@ -12,8 +13,12 @@ import org.apache.hyracks.api.exceptions.HyracksDataException;
 import org.apache.hyracks.storage.am.common.api.IndexException;
 import org.apache.hyracks.storage.am.common.impls.NoOpOperationCallback;
 import org.apache.hyracks.storage.am.common.ophelpers.IndexOperation;
+import org.apache.hyracks.storage.am.lsm.btree.impls.LSMBTree;
+import org.apache.hyracks.storage.am.lsm.common.api.ILSMIOOperation;
 import org.apache.hyracks.storage.am.lsm.common.api.ILSMIndex;
 import org.apache.hyracks.storage.am.lsm.common.api.ILSMIndexAccessor;
+import org.apache.hyracks.storage.am.lsm.common.api.ILSMIndexOperationContext;
+import org.apache.hyracks.storage.am.lsm.common.impls.AbstractLSMIndex;
 import org.apache.hyracks.storage.common.file.ILocalResourceRepository;
 import org.apache.hyracks.storage.common.file.LocalResource;
 
@@ -31,11 +36,11 @@ import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
 /**
- * Created by msa on 3/24/17.
+ * This class manages the log replay buffers and the replay threads per partition
  */
-public class StreamingReplicationThread implements Runnable {
+public class LogReplayManager {
 
-    private static final Logger LOGGER = Logger.getLogger(StreamingReplicationManager.class.getName());
+    private static final Logger LOGGER = Logger.getLogger(LogReplayManager.class.getName());
 
     private final ILocalResourceRepository localResourceRepository;
     private final IDatasetLifecycleManager datasetLifecycleManager;
@@ -47,7 +52,7 @@ public class StreamingReplicationThread implements Runnable {
     private static final Object resourceMapLock = new Object();
     private final Map<Integer, LogReplayThread> partitionReplayThreadMap;
 
-    public StreamingReplicationThread(IAppRuntimeContextProvider appRuntimeContextProvider,
+    public LogReplayManager(IAppRuntimeContextProvider appRuntimeContextProvider,
             IReplicaResourcesManager replicaResourcesManager) {
         this.replicaResourcesManager = replicaResourcesManager;
 
@@ -56,17 +61,12 @@ public class StreamingReplicationThread implements Runnable {
         this.nodePartitions = ((PersistentLocalResourceRepository) localResourceRepository).getInactivePartitions();
         this.datasetLifecycleManager = appRuntimeContextProvider.getDatasetLifecycleManager();
         this.partitionReplayThreadMap = new HashMap<>();
-        LOGGER.log(Level.INFO, "REPL: Streaming replication initialized!");
         try {
             refreshLocalResourceMap();
         } catch (HyracksDataException e) {
             e.printStackTrace();
         }
         startReplayThreads();
-    }
-
-    @Override public void run() {
-        Thread.currentThread().setName("Streaming Replication Thread");
     }
 
     public void flushAllWriteQs() {
@@ -86,15 +86,15 @@ public class StreamingReplicationThread implements Runnable {
     public void submit(ILogRecord logRecord) throws InterruptedException {
         switch (logRecord.getLogType()) {
             case LogType.UPDATE:
+            case LogType.ENTITY_COMMIT:
+            case LogType.UPSERT_ENTITY_COMMIT:
                 partitionReplayThreadMap.get(logRecord.getResourcePartition()).submit(logRecord);
                 break;
             case LogType.FLUSH:
+                LOGGER.info("Flush notification from remote primary: " + logRecord.getLogRecordForDisplay());
                 for (LogReplayThread replayThread : partitionReplayThreadMap.values()) {
                     replayThread.submit(logRecord);
                 }
-                break;
-            case LogType.ENTITY_COMMIT:
-            case LogType.UPSERT_ENTITY_COMMIT:
                 break;
             default:
                 LOGGER.severe("Unsupported log type for replay! ");
@@ -121,6 +121,9 @@ public class StreamingReplicationThread implements Runnable {
         private ByteBuffer incomingRemoteLogBufferPage;
         private ByteBuffer remoteLogBufferPage;
 
+        private int totalReplayed = 0;
+        private int totalFlushed = 0;
+
         public LogReplayThread(int partition) {
             this.partition = partition;
             this.jobQ = new LinkedBlockingQueue<>();
@@ -146,7 +149,7 @@ public class StreamingReplicationThread implements Runnable {
                     incomingRemoteLogBufferPage = emptyQ.take();
                     incomingRemoteLogBufferPage.clear();
                 }
-                LOGGER.info("Copying remote log buffer on " + partition + " PK " + logRecord.getPKHashValue());
+                //LOGGER.info("Copying remote log buffer on " + partition + " PK " + logRecord.getPKHashValue());
                 logRecord.writeRemoteLogRecord(incomingRemoteLogBufferPage);
                 this.notify();
             }
@@ -170,7 +173,7 @@ public class StreamingReplicationThread implements Runnable {
         }
 
         @Override public void run() {
-            String name = "RMT-" + partition;
+            String name = "LogReplay-" + partition;
             Thread.currentThread().setName(name);
             boolean flushLog = false;
             while (true) {
@@ -181,7 +184,7 @@ public class StreamingReplicationThread implements Runnable {
                                 this.wait();
                             } else {
                                 try {
-                                    LOGGER.info("Stealing current buffer into replay thread");
+                                    //LOGGER.info("Stealing current buffer into replay thread");
                                     flushIncoming();
                                 } catch (InterruptedException e) {
                                     e.printStackTrace();
@@ -191,11 +194,11 @@ public class StreamingReplicationThread implements Runnable {
                         }
                     }
                     remoteLogBufferPage = jobQ.take();
-                    int counter = 0;
-                    Instant start = Instant.now();
+                    //int counter = 0;
+                    //Instant start = Instant.now();
                     while (remoteLogBufferPage.hasRemaining()) {
                         logRecord.readRemoteLog(remoteLogBufferPage);
-                        counter++;
+                        //counter++;
 //                        LOGGER.log(Level.INFO,
 //                                "REPL: " + name + " : read log record " + logRecord.getLogRecordForDisplay());
                         try {
@@ -204,9 +207,9 @@ public class StreamingReplicationThread implements Runnable {
                             LOGGER.log(Level.INFO, "REPL FAILED: " + name + " " + logRecord.getLogRecordForDisplay());
                         }
                     }
-                    Instant end = Instant.now();
-                    LOGGER.info("LogReplay: Thread " + name + " inserted " + counter + " records in " + Duration
-                                    .between(start, end).toMillis() + "ms. Backlog size: " + jobQ.size());
+                    //Instant end = Instant.now();
+                    //LOGGER.info("LogReplay: Thread " + name + " inserted " + counter + " records in " + Duration
+                                    //.between(start, end).toMillis() + "ms. Backlog size: " + jobQ.size());
                     remoteLogBufferPage.clear();
                     emptyQ.offer(remoteLogBufferPage);
                 } catch (InterruptedException e) {
@@ -218,6 +221,7 @@ public class StreamingReplicationThread implements Runnable {
         private void materialize() {
             long resourceId = logRecord.getResourceId();
             if (logRecord.getLogType() == LogType.UPDATE) {
+                totalReplayed++;
                 try {
                     LocalResource localResource = resourceMap.get(resourceId);
                     if (localResource == null) {
@@ -239,6 +243,7 @@ public class StreamingReplicationThread implements Runnable {
                                 .createIndexInstance(txnSubSystem.getServiceContext(), localResource);
                         ((DatasetLifecycleManager) datasetLifecycleManager)
                                 .registerInactivePartitionIndex(localResource.getPath(), index);
+                        //datasetLifecycleManager.register(localResource.getPath(), index);
                         datasetLifecycleManager.open(localResource.getPath());
                     }
 
@@ -257,6 +262,10 @@ public class StreamingReplicationThread implements Runnable {
                 } catch (IndexException e) {
                     // TODO: change this to a catch all exception?
                     LOGGER.severe("Could not replay remote index modification");
+                    e.printStackTrace();
+                }
+                if (totalReplayed % 10000 == 0) {
+                    LOGGER.info("Total replayed: " + totalReplayed);
                 }
             } else if (logRecord.getLogType() == LogType.FLUSH) {
                 try {
@@ -266,6 +275,13 @@ public class StreamingReplicationThread implements Runnable {
                     e.printStackTrace();
                 } catch (HyracksDataException e) {
                     // Handle this case
+                    e.printStackTrace();
+                }
+            } else if (logRecord.getLogType() == LogType.ENTITY_COMMIT) {
+                try {
+                    datasetLifecycleManager.close(resourceMap.get(logRecord.getResourceId()).getPath());
+                } catch (HyracksDataException e) {
+                    LOGGER.severe("Could not close the dataset!");
                     e.printStackTrace();
                 }
             }
@@ -278,25 +294,42 @@ public class StreamingReplicationThread implements Runnable {
             DatasetInfo dsInfo = datasetLifecycleManager.getDatasetInfo(datasetId);
             List<IndexInfo> inactiveIndexes = dsInfo.getReplicaParitionIndexList();
             inactiveIndexes = inactiveIndexes.stream()
+                    .filter(index -> index.getPartitionId() == partition)
                     .filter(index -> remoteNodePartitions.contains(index.getPartitionId()))
                     .collect(Collectors.toList());
-            LOGGER.info("Indexes to schedule a flush: " + inactiveIndexes);
+            LOGGER.info("Indexes to schedule a flush: " + inactiveIndexes + " on " + Thread.currentThread().getName());
+            LOGGER.info("Ignoring that request....");
 
             // Get all the inactive partitions to have the same state as the primary by flushing its job queues.
             for (IndexInfo indexInfo : inactiveIndexes) {
                 if (indexInfo.getPartitionId() == partition) {
-                    ILSMIndexAccessor accessor = indexInfo.getIndex()
-                            .createAccessor(NoOpOperationCallback.INSTANCE, NoOpOperationCallback.INSTANCE);
+//                    ILSMIndexAccessor accessor = indexInfo.getIndex()
+//                            .createAccessor(NoOpOperationCallback.INSTANCE, NoOpOperationCallback.INSTANCE);
+//                    AbstractLSMIOOperationCallback ioOpCallback = (AbstractLSMIOOperationCallback) indexInfo.getIndex()
+//                            .getIOOperationCallback();
+//                    PrimaryIndexOperationTracker opTracker = (PrimaryIndexOperationTracker) indexInfo.getIndex()
+//                            .getOperationTracker();
+                    if (!(indexInfo.getIndex().isCurrentMutableComponentEmpty())) {
+                        long localAppendLSN = txnSubSystem.getLogManager().getAppendLSN();
+//                        LOGGER.info("Setting local LSN of the flushed index " + indexInfo + " to " + localAppendLSN);
+                        Instant start = Instant.now();
+                        DatasetLifecycleManager.flushAndWaitForIO(dsInfo, indexInfo);
+                        Instant end = Instant.now();
+                        LOGGER.info("Remote index " + indexInfo.getIndex() + " flush operation blocked for " +
+                                Duration.between(start, end).toMillis() + " ms. BacklogSize: " + jobQ.size());
+//                        ioOpCallback.updateLastLSN(localAppendLSN);
+//                        accessor.scheduleFlush(ioOpCallback);
+                    } else {
+                        LOGGER.info("no entries since last flush, ignoring request");
+                    }
 
-                    AbstractLSMIOOperationCallback ioOpCallback = (AbstractLSMIOOperationCallback) indexInfo.getIndex()
-                            .getIOOperationCallback();
-                    long localAppendLSN = txnSubSystem.getLogManager().getAppendLSN();
-                    LOGGER.info("Setting local LSN of the flushed index " + indexInfo + " to " + localAppendLSN);
-                    ioOpCallback.updateLastLSN(localAppendLSN);
-                    accessor.scheduleFlush(indexInfo.getIndex().getIOOperationCallback());
                 }
             }
-            LOGGER.info("Flushing complete!");
+
+//            PrimaryIndexOperationTracker tracker = (PrimaryIndexOperationTracker)inactiveIndexes.get(0).getIndex()
+//                    .getOperationTracker();
+//            tracker.triggerInactiveIndexFlush(partition, txnSubSystem.getLogManager().getAppendLSN());
+//            LOGGER.info("Flushing requested!");
         }
     }
 }

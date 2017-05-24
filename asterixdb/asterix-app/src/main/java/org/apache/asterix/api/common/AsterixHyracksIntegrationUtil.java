@@ -282,7 +282,8 @@ public class AsterixHyracksIntegrationUtil {
                 }
             }
         });
-        System.setProperty(GlobalConfig.CONFIG_FILE_PROPERTY, "asterix-build-configuration.xml");
+        //System.setProperty(GlobalConfig.CONFIG_FILE_PROPERTY, "asterix-build-configuration.xml");
+        System.setProperty(GlobalConfig.CONFIG_FILE_PROPERTY, "asterix-large-component-config.xml");
 
         init(cleanupOnStart);
         while (true) {

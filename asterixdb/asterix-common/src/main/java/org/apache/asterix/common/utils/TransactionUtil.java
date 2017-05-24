@@ -19,6 +19,7 @@
 package org.apache.asterix.common.utils;
 
 import java.nio.ByteBuffer;
+import java.util.logging.Logger;
 
 import org.apache.asterix.common.context.PrimaryIndexOperationTracker;
 import org.apache.asterix.common.transactions.ITransactionContext;
@@ -30,6 +31,7 @@ import org.apache.hyracks.dataflow.common.data.accessors.ITupleReference;
 public class TransactionUtil {
 
     public static final boolean PROFILE_MODE = false;
+    public static final Logger LOGGER = Logger.getLogger(TransactionUtil.class.getName());
 
     private TransactionUtil() {
     }
@@ -56,6 +58,7 @@ public class TransactionUtil {
         logRecord.setNumOfFlushedIndexes(numberOfIndexes);
         logRecord.setNodeId(nodeId);
         logRecord.computeAndSetLogSize();
+        LOGGER.info("Formed flush log record: " + logRecord.getLogRecordForDisplay());
     }
 
     public static void formEntityCommitLogRecord(LogRecord logRecord, ITransactionContext txnCtx, int datasetId,

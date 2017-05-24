@@ -273,12 +273,13 @@ public class ReplicationManager extends AbstractReplicationManager {
         if (requestBuffer == null) {
             requestBuffer = ByteBuffer.allocate(INITIAL_BUFFER_SIZE);
         }
+        if (replicaSockets == null) {
+            replicaSockets = getActiveRemoteReplicasSockets();
+        }
         try {
             IndexFileProperties indexFileRef = localResourceRepo.getIndexFileRef(jobFile);
             int jobPartition = indexFileRef.getPartitionId();
-            if (replicaSockets == null) {
-                replicaSockets = getActiveRemoteReplicasSockets();
-            }
+
             RandomAccessFile fromFile = new RandomAccessFile(jobFile, "r");
             FileChannel fileChannel = fromFile.getChannel();
             long fileSize = fileChannel.size();

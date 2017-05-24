@@ -20,6 +20,7 @@ import org.apache.asterix.replication.storage.LSMComponentProperties;
 import org.apache.asterix.replication.storage.LSMIndexFileProperties;
 import org.apache.asterix.replication.storage.ReplicaResourcesManager;
 import org.apache.asterix.transaction.management.resource.PersistentLocalResourceRepository;
+import org.apache.hadoop.yarn.webapp.hamlet.HamletSpec;
 import org.apache.hyracks.api.application.IClusterLifecycleListener;
 import org.apache.hyracks.api.exceptions.HyracksDataException;
 import org.apache.hyracks.api.replication.IReplicationJob;
@@ -234,30 +235,55 @@ public class StreamingReplicationManager extends AbstractReplicationManager {
         if (requestBuffer == null) {
             requestBuffer = ByteBuffer.allocate(INITIAL_BUFFER_SIZE);
         }
+        if (replicaSockets == null) {
+            replicaSockets = getActiveRemoteReplicasSockets();
+        }
+        IndexFileProperties indexFileRef = localResourceRepo.getIndexFileRef(jobFile);
+        int jobPartition = indexFileRef.getPartitionId();
         try {
-            IndexFileProperties indexFileRef = localResourceRepo.getIndexFileRef(jobFile);
-            int jobPartition = indexFileRef.getPartitionId();
-            if (replicaSockets == null) {
-                replicaSockets = getActiveRemoteReplicasSockets();
-            }
-            RandomAccessFile fromFile = new RandomAccessFile(jobFile, "r");
-            FileChannel fileChannel = fromFile.getChannel();
-            long fileSize = fileChannel.size();
-            LSMIndexFileProperties asterixFileProperties = new LSMIndexFileProperties();
-            asterixFileProperties.initialize(jobFile, fileSize, nodeId, false, -1, true);
-            requestBuffer = ReplicationProtocol.writeFileReplicationRequest(requestBuffer, asterixFileProperties,
-                    ReplicationProtocol.ReplicationRequestType.CREATE_INDEX);
-            for (Map.Entry<String, SocketChannel> replicaSocket : replicaSockets.entrySet()) {
-                if (!replica2PartitionsMap.get(replicaSocket.getKey()).contains(jobPartition)) {
-                    continue;
+            if (job.getOperation() == IReplicationJob.ReplicationOperation.DELETE) {
+                for (String filePath : job.getJobFiles()) {
+                    LSMIndexFileProperties afp = new LSMIndexFileProperties();
+                    afp.initialize(filePath, -1, nodeId, false, -1L, true);
+                    requestBuffer = ReplicationProtocol.writeFileReplicationRequest(requestBuffer, afp, ReplicationProtocol.ReplicationRequestType.DELETE_FILE);
+                    for (Map.Entry<String, SocketChannel> replicaSocket : replicaSockets.entrySet()) {
+                        if (!replica2PartitionsMap.get(replicaSocket.getKey()).contains(jobPartition)) {
+                            continue;
+                        }
+                        SocketChannel channel = replicaSocket.getValue();
+                        try {
+                            NetworkingUtil.transferBufferToChannel(channel, requestBuffer);
+                            if (afp.requiresAck()) {
+                                waitForResponse(channel, responseBuffer);
+                            }
+                        } catch (IOException e) {
+                            handleReplicationFailure(channel, e);
+                        }
+                        requestBuffer.rewind();
+                    }
                 }
-                NetworkingUtil.transferBufferToChannel(replicaSocket.getValue(), requestBuffer);
-                NetworkingUtil.sendFile(fileChannel, replicaSocket.getValue());
-                ReplicationProtocol.ReplicationRequestType responseType = waitForResponse(replicaSocket.getValue(), responseBuffer);
-                if (responseType != ReplicationProtocol.ReplicationRequestType.ACK) {
-                    throw new IOException("No ack from replica!");
+            } else {
+                RandomAccessFile fromFile = new RandomAccessFile(jobFile, "r");
+                FileChannel fileChannel = fromFile.getChannel();
+                long fileSize = fileChannel.size();
+                LSMIndexFileProperties asterixFileProperties = new LSMIndexFileProperties();
+                asterixFileProperties.initialize(jobFile, fileSize, nodeId, false, -1, true);
+
+                requestBuffer = ReplicationProtocol.writeFileReplicationRequest(requestBuffer, asterixFileProperties,
+                        ReplicationProtocol.ReplicationRequestType.CREATE_INDEX);
+                for (Map.Entry<String, SocketChannel> replicaSocket : replicaSockets.entrySet()) {
+                    if (!replica2PartitionsMap.get(replicaSocket.getKey()).contains(jobPartition)) {
+                        continue;
+                    }
+                    NetworkingUtil.transferBufferToChannel(replicaSocket.getValue(), requestBuffer);
+                    NetworkingUtil.sendFile(fileChannel, replicaSocket.getValue());
+                    ReplicationProtocol.ReplicationRequestType responseType = waitForResponse(replicaSocket.getValue(),
+                            responseBuffer);
+                    if (responseType != ReplicationProtocol.ReplicationRequestType.ACK) {
+                        throw new IOException("No ack from replica!");
+                    }
+                    requestBuffer.rewind();
                 }
-                requestBuffer.rewind();
             }
             closeReplicaSockets(replicaSockets);
         } catch (HyracksDataException e) {
@@ -291,6 +317,7 @@ public class StreamingReplicationManager extends AbstractReplicationManager {
         try {
 
             if (job.getJobType() == IReplicationJob.ReplicationJobType.INDEX_CREATE) {
+
                 processIndexCreate(job, replicasSockets, requestBuffer);
             }
             //all of the job's files belong to a single storage partition.
@@ -688,6 +715,7 @@ public class StreamingReplicationManager extends AbstractReplicationManager {
     private void closeReplicaSockets(Map<String, SocketChannel> replicaSockets) {
         //send goodbye
         ByteBuffer goodbyeBuffer = ReplicationProtocol.getGoodbyeBuffer();
+        sendRequest(replicaSockets, goodbyeBuffer);
 
         Iterator<Map.Entry<String, SocketChannel>> iterator = replicaSockets.entrySet().iterator();
         while (iterator.hasNext()) {

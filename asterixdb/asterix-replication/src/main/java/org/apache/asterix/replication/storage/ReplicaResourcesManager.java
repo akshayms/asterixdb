@@ -73,9 +73,19 @@ public class ReplicaResourcesManager implements IReplicaResourcesManager {
                 FileUtils.deleteQuietly(destFile);
             } else {
                 //delete index directory
-                FileUtils.deleteQuietly(new File(indexPath));
+                //FileUtils.deleteQuietly(new File(indexPath));
+                try {
+                    FileUtils.deleteDirectory(new File(indexPath));
+                } catch (IOException e) {
+                    LOGGER.severe("Failed to delete directory!");
+                    e.printStackTrace();
+                }
             }
         }
+    }
+
+    public void deleteIndexArtifcats(LSMIndexFileProperties afp) {
+        String indexPath = getIndexPath(afp);
     }
 
     public String getIndexPath(LSMIndexFileProperties fileProperties) {

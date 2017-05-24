@@ -70,6 +70,7 @@ import org.apache.asterix.metadata.api.IMetadataNode;
 import org.apache.asterix.metadata.bootstrap.MetadataBootstrap;
 import org.apache.asterix.replication.management.ReplicationChannel;
 import org.apache.asterix.replication.management.ReplicationManager;
+import org.apache.asterix.replication.management.StreamingReplicationChannel;
 import org.apache.asterix.replication.management.StreamingReplicationManager;
 import org.apache.asterix.replication.recovery.RemoteRecoveryManager;
 import org.apache.asterix.replication.storage.ReplicaResourcesManager;
@@ -254,7 +255,7 @@ public class NCAppRuntimeContext implements IAppRuntimeContext {
                         replicaResourcesManager, replicationManager, ncServiceContext, asterixAppRuntimeContextProvider);
             } else {
                 // Change to streaming replication
-                replicationChannel = new ReplicationChannel(nodeId, replicationProperties, txnSubsystem.getLogManager(),
+                replicationChannel = new StreamingReplicationChannel(nodeId, replicationProperties, txnSubsystem.getLogManager(),
                         replicaResourcesManager, replicationManager, ncServiceContext, asterixAppRuntimeContextProvider);
             }
 

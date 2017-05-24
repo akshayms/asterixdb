@@ -19,6 +19,8 @@
 
 package org.apache.hyracks.storage.am.lsm.common.impls;
 
+import java.io.PrintWriter;
+import java.io.StringWriter;
 import java.util.ArrayList;
 import java.util.LinkedList;
 import java.util.List;
@@ -202,7 +204,6 @@ public class LSMHarness implements ILSMHarness {
         try {
             synchronized (opTracker) {
                 try {
-
                     /**
                      * [flow control]
                      * If merge operations are lagged according to the merge policy,
@@ -450,7 +451,12 @@ public class LSMHarness implements ILSMHarness {
     @Override
     public void scheduleFlush(ILSMIndexOperationContext ctx, ILSMIOOperationCallback callback)
             throws HyracksDataException {
+//        StringWriter sw = new StringWriter();
+//        PrintWriter pw = new PrintWriter(sw);
+//        new Throwable().printStackTrace(pw);
+//        LOGGER.info("Scheduling flush in Harness: " + lsmIndex + "    STACK TRACE: " + sw.toString());
         if (!getAndEnterComponents(ctx, LSMOperationType.FLUSH, true)) {
+            LOGGER.info("Failed to get and enter components for index " + lsmIndex);
             callback.afterFinalize(LSMOperationType.FLUSH, null);
             return;
         }

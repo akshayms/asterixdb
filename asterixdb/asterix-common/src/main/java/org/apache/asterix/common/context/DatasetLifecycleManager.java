@@ -25,6 +25,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.logging.Logger;
 
 import com.sun.corba.se.pept.transport.ResponseWaitingRoom;
 import org.apache.asterix.common.api.IDatasetLifecycleManager;
@@ -59,6 +60,8 @@ public class DatasetLifecycleManager implements IDatasetLifecycleManager, ILifeC
     private final LogRecord logRecord;
     private final int numPartitions;
     private volatile boolean stopped = false;
+
+    private static final Logger LOGGER = Logger.getLogger(DatasetLifecycleManager.class.getName());
 
     public DatasetLifecycleManager(StorageProperties storageProperties,
             ILocalResourceRepository resourceRepository, int firstAvilableUserDatasetID, ILogManager logManager,
@@ -114,6 +117,7 @@ public class DatasetLifecycleManager implements IDatasetLifecycleManager, ILifeC
         if (datasetResource == null) {
             datasetResource = getDatasetLifecycle(did);
         }
+        ((ILSMIndex) index).setInactivePartitionIndex(true);
         datasetResource.registerInactivePartitionIndex(resourceID, index, partition);
     }
 
@@ -242,7 +246,7 @@ public class DatasetLifecycleManager implements IDatasetLifecycleManager, ILifeC
         return false;
     }
 
-    private static void flushAndWaitForIO(DatasetInfo dsInfo, IndexInfo iInfo) throws HyracksDataException {
+    public static void flushAndWaitForIO(DatasetInfo dsInfo, IndexInfo iInfo) throws HyracksDataException {
         if (iInfo.isOpen()) {
             ILSMIndexAccessor accessor = iInfo.getIndex().createAccessor(NoOpOperationCallback.INSTANCE,
                     NoOpOperationCallback.INSTANCE);
@@ -422,6 +426,7 @@ public class DatasetLifecycleManager implements IDatasetLifecycleManager, ILifeC
                 }
             }
             for (IndexInfo iInfo : dsInfo.getIndexes().values()) {
+                LOGGER.info("Scheduling indes flush from DSLM: " + iInfo.getIndex());
                 //update resource lsn
                 AbstractLSMIOOperationCallback ioOpCallback = (AbstractLSMIOOperationCallback) iInfo.getIndex()
                         .getIOOperationCallback();
@@ -431,6 +436,7 @@ public class DatasetLifecycleManager implements IDatasetLifecycleManager, ILifeC
 
         if (asyncFlush) {
             for (IndexInfo iInfo : dsInfo.getIndexes().values()) {
+
                 ILSMIndexAccessor accessor = iInfo.getIndex().createAccessor(NoOpOperationCallback.INSTANCE,
                         NoOpOperationCallback.INSTANCE);
                 accessor.scheduleFlush(iInfo.getIndex().getIOOperationCallback());
